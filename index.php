@@ -40,28 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // サムネイル画像の処理
         if (empty($errors)) {
             $imagePath = '';
-            if ($imageOption === 'url') {
-                // 画像URLから取得
-                $imageUrl = filter_input(INPUT_POST, 'imageUrl', FILTER_SANITIZE_URL);
-                if (empty($imageUrl) || !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                    $errors[] = '有効な画像URLを入力してください。';
-                } else {
-                    $imageData = file_get_contents_curl($imageUrl);
-                    if ($imageData === false) {
-                        $errors[] = '画像を取得できませんでした。';
-                    } else {
-                        $imagePath = saveImage($imageData);
-                    }
-                }
-            } elseif ($imageOption === 'upload') {
-                // ファイルアップロード処理
-                if (isset($_FILES['imageFile']) && $_FILES['imageFile']['error'] === UPLOAD_ERR_OK) {
-                    $imageData = file_get_contents($_FILES['imageFile']['tmp_name']);
-                    $imagePath = saveImage($imageData);
-                } else {
-                    $errors[] = '画像ファイルのアップロードに失敗しました。';
-                }
-            } elseif ($imageOption === 'template') {
+
+            if ($imageOption === 'template') {
                 // テンプレート画像を使用
                 $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
                 if (!in_array($selectedTemplate, $templateImages)) {
@@ -71,10 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // 画像編集テンプレートの適用
-            if (empty($errors) && !empty($editedImageData)) {
+            // 画像編集テンプレートの適用またはクライアント側で処理された画像の保存
+            if (!empty($editedImageData)) {
                 $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
                 $imagePath = saveImage($imageData);
+            }
+
+            if (empty($imagePath)) {
+                $errors[] = '画像の処理に失敗しました。';
             }
 
             // 生成されたHTMLファイルの作成
@@ -105,6 +89,8 @@ function file_get_contents_curl($url)
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    // SSL証明書の検証を無効化（必要に応じて）
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     $data = curl_exec($ch);
     curl_close($ch);
     return $data;
@@ -141,7 +127,6 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
     return $html;
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -319,6 +304,66 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     alert('リンクをコピーしました。');
                 });
             }
+
+            // 画像プレビューと切り抜き処理
+            const imageFileInput = document.querySelector('input[name="imageFile"]');
+            if (imageFileInput) {
+                imageFileInput.addEventListener('change', function() {
+                    const file = this.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            loadImageAndCrop(e.target.result);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+
+            const imageUrlInput = document.querySelector('input[name="imageUrl"]');
+            if (imageUrlInput) {
+                imageUrlInput.addEventListener('blur', function() {
+                    const url = this.value;
+                    if (url) {
+                        loadImageAndCrop(url, true);
+                    }
+                });
+            }
+
+            function loadImageAndCrop(source, isUrl = false) {
+                const img = new Image();
+                img.crossOrigin = "Anonymous"; // CORS対策
+                img.onload = function() {
+                    // 2:1に切り抜き
+                    const canvas = document.createElement('canvas');
+                    const desiredWidth = img.width;
+                    const desiredHeight = img.width / 2; // アスペクト比2:1
+                    canvas.width = desiredWidth;
+                    canvas.height = desiredHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
+                    const dataURL = canvas.toDataURL('image/png');
+                    // プレビュー表示
+                    let preview = document.getElementById('imagePreview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.id = 'imagePreview';
+                        preview.classList.add('preview-image');
+                        document.querySelector('.container').appendChild(preview);
+                    }
+                    preview.src = dataURL;
+                    // editedImageDataにセット
+                    document.getElementById('editedImageData').value = dataURL;
+                };
+                img.onerror = function() {
+                    alert('画像を読み込めませんでした。');
+                };
+                if (isUrl) {
+                    img.src = source;
+                } else {
+                    img.src = source;
+                }
+            }
         });
     </script>
 </head>
@@ -344,6 +389,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
 
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+            <input type="hidden" id="editedImageData" name="editedImageData">
             <label>遷移先URL（必須）</label>
             <input type="url" name="linkA" required>
 
