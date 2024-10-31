@@ -132,22 +132,36 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
 <head>
     <meta charset="UTF-8">
     <title>サムネイル付きリンク生成サービス</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* CSSスタイルをここに記述 */
+        /* リセットCSS */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        /* 共通スタイル */
         body {
             background-color: #121212;
             color: #ffffff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow-x: hidden;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            animation: fadeIn 1s ease-in-out;
         }
         h1 {
             text-align: center;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+            font-size: 16px;
         }
         input[type="text"],
         input[type="url"],
@@ -159,7 +173,14 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             border-radius: 5px;
             font-size: 16px;
             padding: 10px;
-            margin-bottom: 10px;
+            margin-top: 5px;
+            transition: background-color 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="url"]:focus,
+        textarea:focus {
+            background-color: #3a3a3a;
+            outline: none;
         }
         button {
             background: linear-gradient(to right, #00e5ff, #00b0ff);
@@ -167,16 +188,21 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             border: none;
             border-radius: 5px;
             font-size: 16px;
-            padding: 10px;
+            padding: 15px;
+            margin-top: 20px;
             cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s;
         }
         button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
+            transform: scale(1.02);
         }
         .error {
             color: #ff5252;
             font-size: 14px;
             animation: shake 0.5s;
+            margin-top: 10px;
         }
         @keyframes shake {
             0% { transform: translateX(0); }
@@ -190,42 +216,48 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             color: #ffffff;
             border-radius: 10px;
             padding: 15px;
-            margin-top: 10px;
+            margin-top: 20px;
+            animation: fadeInUp 0.5s;
         }
         .success-message input[type="text"] {
-            width: 55%;
+            width: 70%;
             margin-top: 10px;
             display: inline-block;
+            background-color: #2a2a2a;
         }
         .success-message button {
-            width: 40%;
+            width: 25%;
             margin-left: 5%;
             display: inline-block;
+            padding: 10px;
         }
         .preview-image {
-            max-width: 400px;
+            max-width: 100%;
             border-radius: 5px;
-            margin-top: 10px;
+            margin-top: 20px;
+            animation: fadeIn 0.5s;
         }
         /* モーダルスタイル */
         .modal {
             display: none;
             position: fixed;
-            z-index: 1;
-            padding-top: 100px;
+            z-index: 1000;
             left: 0;
             top: 0;
             width: 100%;
             height: 100%;
-            overflow: auto;
+            overflow-y: auto;
             background-color: rgba(0,0,0,0.8);
+            animation: fadeIn 0.5s;
         }
         .modal-content {
             background-color: #1e1e1e;
-            margin: auto;
+            margin: 50px auto;
             padding: 20px;
             border-radius: 10px;
-            width: 80%;
+            width: 90%;
+            max-width: 500px;
+            animation: scaleUp 0.3s ease-in-out;
         }
         .close {
             color: #ffffff;
@@ -238,11 +270,19 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         .template-grid {
             display: flex;
             flex-wrap: wrap;
+            justify-content: center;
         }
         .template-item {
             width: 45%;
             margin: 2.5%;
             position: relative;
+            overflow: hidden;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        .template-item:hover {
+            transform: scale(1.05);
         }
         .template-item img {
             width: 100%;
@@ -252,11 +292,37 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             position: absolute;
             top: 10px;
             left: 10px;
+            transform: scale(1.5);
         }
         /* 詳細設定のスタイル */
         .details-section {
             display: none;
-            margin-top: 10px;
+            margin-top: 20px;
+            animation: fadeIn 0.5s;
+        }
+        /* アニメーション */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleUp {
+            from { transform: scale(0.8); }
+            to { transform: scale(1); }
+        }
+        /* メディアクエリ */
+        @media screen and (max-width: 600px) {
+            .success-message input[type="text"] {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .success-message button {
+                width: 100%;
+                margin-left: 0;
+            }
         }
     </style>
     <script>
@@ -271,14 +337,14 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             function toggleImageOption() {
                 document.getElementById('imageUrlInput').style.display = 'none';
                 document.getElementById('imageFileInput').style.display = 'none';
-                document.getElementById('templateSelection').style.display = 'none';
+                document.getElementById('templateSelectionButton').style.display = 'none';
 
                 if (this.value === 'url') {
                     document.getElementById('imageUrlInput').style.display = 'block';
                 } else if (this.value === 'upload') {
                     document.getElementById('imageFileInput').style.display = 'block';
                 } else if (this.value === 'template') {
-                    document.getElementById('templateSelection').style.display = 'block';
+                    document.getElementById('templateSelectionButton').style.display = 'block';
                 }
             }
 
@@ -364,6 +430,41 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     img.src = source;
                 }
             }
+
+            // テンプレート選択モーダルの処理
+            const templateSelectionButton = document.getElementById('templateSelectionButton');
+            const templateModal = document.getElementById('templateModal');
+            const templateClose = document.getElementById('templateClose');
+            const templateItems = document.querySelectorAll('.template-item');
+
+            templateSelectionButton.addEventListener('click', function() {
+                templateModal.style.display = 'block';
+            });
+            templateClose.addEventListener('click', function() {
+                templateModal.style.display = 'none';
+            });
+            window.addEventListener('click', function(event) {
+                if (event.target == templateModal) {
+                    templateModal.style.display = 'none';
+                }
+            });
+            templateItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const radio = this.querySelector('input[type="radio"]');
+                    radio.checked = true;
+                    templateModal.style.display = 'none';
+                    // プレビュー表示
+                    let preview = document.getElementById('imagePreview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.id = 'imagePreview';
+                        preview.classList.add('preview-image');
+                        document.querySelector('.container').appendChild(preview);
+                    }
+                    preview.src = this.querySelector('img').src;
+                });
+            });
+
         });
     </script>
 </head>
@@ -396,10 +497,12 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <label>タイトル（必須）</label>
             <input type="text" name="title" required>
 
-            <label>サムネイル画像の選択方法（必須）</label><br>
-            <input type="radio" name="imageOption" value="url" required> 画像URLを入力<br>
-            <input type="radio" name="imageOption" value="upload"> 画像ファイルをアップロード<br>
-            <input type="radio" name="imageOption" value="template"> テンプレートから選択<br>
+            <label>サムネイル画像の選択方法（必須）</label>
+            <div>
+                <label><input type="radio" name="imageOption" value="url" required> 画像URLを入力</label><br>
+                <label><input type="radio" name="imageOption" value="upload"> 画像ファイルをアップロード</label><br>
+                <label><input type="radio" name="imageOption" value="template"> テンプレートから選択</label><br>
+            </div>
 
             <div id="imageUrlInput" style="display:none;">
                 <label>画像URLを入力</label>
@@ -411,18 +514,24 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 <input type="file" name="imageFile" accept="image/*">
             </div>
 
-            <div id="templateSelection" style="display:none;">
-                <label>テンプレートを選択</label>
-                <div class="template-grid">
-                    <?php
-                    $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                    foreach ($templates as $template):
-                    ?>
-                        <div class="template-item">
-                            <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                            <input type="radio" name="selectedTemplate" value="<?php echo $template; ?>">
-                        </div>
-                    <?php endforeach; ?>
+            <button type="button" id="templateSelectionButton" style="display:none;">テンプレートを選択</button>
+
+            <!-- テンプレート選択モーダル -->
+            <div id="templateModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" id="templateClose">&times;</span>
+                    <h2>テンプレートを選択</h2>
+                    <div class="template-grid">
+                        <?php
+                        $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                        foreach ($templates as $template):
+                        ?>
+                            <div class="template-item">
+                                <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                                <input type="radio" name="selectedTemplate" value="<?php echo $template; ?>">
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
 
