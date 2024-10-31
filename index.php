@@ -1,7 +1,8 @@
 <?php
+// セッションの開始は一番最初に行う必要があります
 session_start();
 
-// CSRFトークン生成
+// CSRFトークン生成（トークンが未設定の場合のみ生成）
 if (empty($_SESSION['token'])) {
     $_SESSION['token'] = bin2hex(random_bytes(32));
 }
@@ -13,7 +14,7 @@ $generatedLink = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRFトークンチェック
-    if (!hash_equals($_SESSION['token'], $_POST['token'])) {
+    if (!isset($_POST['token']) || !hash_equals($_SESSION['token'], $_POST['token'])) {
         $errors[] = '不正なリクエストです。';
     } else {
         // 入力データの取得とサニタイズ
@@ -313,6 +314,29 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             from { transform: scale(0.8); }
             to { transform: scale(1); }
         }
+        /* 画像選択ボタンのスタイル */
+        .image-option-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .image-option-button {
+            background: linear-gradient(to right, #00e5ff, #00b0ff);
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+            flex: 1 1 calc(50% - 10px);
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .image-option-button:hover {
+            background: linear-gradient(to right, #00b0ff, #00e5ff);
+            transform: scale(1.02);
+        }
         /* メディアクエリ */
         @media screen and (max-width: 600px) {
             .success-message input[type="text"] {
@@ -323,30 +347,41 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 width: 100%;
                 margin-left: 0;
             }
+            .image-option-button {
+                flex: 1 1 100%;
+            }
         }
     </style>
     <script>
         // JavaScriptをここに記述
         document.addEventListener('DOMContentLoaded', function() {
-            // 画像選択方法の切替
-            const imageOptions = document.querySelectorAll('input[name="imageOption"]');
-            imageOptions.forEach(option => {
-                option.addEventListener('change', toggleImageOption);
+            let selectedImageOption = '';
+
+            // 画像選択方法のボタン処理
+            const imageOptionButtons = document.querySelectorAll('.image-option-button');
+            imageOptionButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // クラスの切り替え
+                    imageOptionButtons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+
+                    selectedImageOption = this.dataset.option;
+                    document.getElementById('imageOptionInput').value = selectedImageOption;
+
+                    // 各オプションの表示・非表示
+                    document.getElementById('imageUrlInput').style.display = 'none';
+                    document.getElementById('imageFileInput').style.display = 'none';
+                    document.getElementById('templateSelectionButton').style.display = 'none';
+
+                    if (selectedImageOption === 'url') {
+                        document.getElementById('imageUrlInput').style.display = 'block';
+                    } else if (selectedImageOption === 'upload') {
+                        document.getElementById('imageFileInput').style.display = 'block';
+                    } else if (selectedImageOption === 'template') {
+                        document.getElementById('templateSelectionButton').style.display = 'block';
+                    }
+                });
             });
-
-            function toggleImageOption() {
-                document.getElementById('imageUrlInput').style.display = 'none';
-                document.getElementById('imageFileInput').style.display = 'none';
-                document.getElementById('templateSelectionButton').style.display = 'none';
-
-                if (this.value === 'url') {
-                    document.getElementById('imageUrlInput').style.display = 'block';
-                } else if (this.value === 'upload') {
-                    document.getElementById('imageFileInput').style.display = 'block';
-                } else if (this.value === 'template') {
-                    document.getElementById('templateSelectionButton').style.display = 'block';
-                }
-            }
 
             // 詳細設定の表示・非表示
             const detailsButton = document.getElementById('toggleDetails');
@@ -462,6 +497,8 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                         document.querySelector('.container').appendChild(preview);
                     }
                     preview.src = this.querySelector('img').src;
+                    // サーバーに送信するselectedTemplateの値を設定
+                    document.getElementById('selectedTemplateInput').value = radio.value;
                 });
             });
 
@@ -491,6 +528,9 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
             <input type="hidden" id="editedImageData" name="editedImageData">
+            <input type="hidden" id="imageOptionInput" name="imageOption" required>
+            <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
+
             <label>遷移先URL（必須）</label>
             <input type="url" name="linkA" required>
 
@@ -498,10 +538,12 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <input type="text" name="title" required>
 
             <label>サムネイル画像の選択方法（必須）</label>
-            <div>
-                <label><input type="radio" name="imageOption" value="url" required> 画像URLを入力</label><br>
-                <label><input type="radio" name="imageOption" value="upload"> 画像ファイルをアップロード</label><br>
-                <label><input type="radio" name="imageOption" value="template"> テンプレートから選択</label><br>
+            <div class="image-option-buttons">
+                <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+            </div>
+            <div class="image-option-buttons">
+                <button type="button" class="image-option-button" data-option="template" style="flex: 1 1 100%;">テンプレートから選択</button>
             </div>
 
             <div id="imageUrlInput" style="display:none;">
@@ -528,7 +570,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                         ?>
                             <div class="template-item">
                                 <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                                <input type="radio" name="selectedTemplate" value="<?php echo $template; ?>">
+                                <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
                             </div>
                         <?php endforeach; ?>
                     </div>
