@@ -760,6 +760,8 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 });
             });
 
+            // 編集モーダルのJavaScriptはここには含まれていませんが、必要に応じて追加してください
+
             // 初回ログイン時のIDおよびパスワード変更アラートとフォーム表示
             <?php if (isset($_GET['force_change']) && $_GET['force_change'] == '1'): ?>
                 window.onload = function() {
