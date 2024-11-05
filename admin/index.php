@@ -22,35 +22,43 @@ $seiseiData = file_exists($seiseiFile) ? json_decode(file_get_contents($seiseiFi
 $adminErrors = [];
 $adminSuccess = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_user') {
-    $newUserId = $_POST['new_user_id'] ?? '';
-    $newUserPassword = $_POST['new_user_password'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if ($_POST['action'] === 'create_user') {
+        $newUserId = htmlspecialchars($_POST['new_user_id'], ENT_QUOTES, 'UTF-8');
+        $newUserPassword = htmlspecialchars($_POST['new_user_password'], ENT_QUOTES, 'UTF-8');
 
-    if (empty($newUserId) || empty($newUserPassword)) {
-        $adminErrors[] = 'ユーザーIDとパスワードを入力してください。';
-    } elseif (isset($usersData[$newUserId])) {
-        $adminErrors[] = '既に存在するユーザーIDです。';
-    } else {
-        $usersData[$newUserId] = [
-            'password' => $newUserPassword,
-            'force_change' => true
-        ];
-        file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
-        $adminSuccess = '新しいユーザーが作成されました。';
+        if (empty($newUserId) || empty($newUserPassword)) {
+            $adminErrors[] = 'ユーザーIDとパスワードを入力してください。';
+        } elseif (isset($usersData[$newUserId])) {
+            $adminErrors[] = '既に存在するユーザーIDです。';
+        } else {
+            $usersData[$newUserId] = [
+                'password' => $newUserPassword,
+                'force_change' => true
+            ];
+            file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
+            $adminSuccess = '新しいユーザーが作成されました。';
+        }
     }
-}
 
-// ユーザー情報の削除処理（オプション）
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_user') {
-    $deleteUserId = $_POST['delete_user_id'] ?? '';
-    if ($deleteUserId === 'admin') {
-        $adminErrors[] = '管理者アカウントは削除できません。';
-    } elseif (isset($usersData[$deleteUserId])) {
-        unset($usersData[$deleteUserId]);
-        file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
-        $adminSuccess = 'ユーザーが削除されました。';
-    } else {
-        $adminErrors[] = 'ユーザーが存在しません。';
+    if ($_POST['action'] === 'delete_user') {
+        $deleteUserId = htmlspecialchars($_POST['delete_user_id'], ENT_QUOTES, 'UTF-8');
+        if ($deleteUserId === 'admin') {
+            $adminErrors[] = '管理者アカウントは削除できません。';
+        } elseif (isset($usersData[$deleteUserId])) {
+            unset($usersData[$deleteUserId]);
+            file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
+
+            // seisei.json内のデータも削除
+            if (isset($seiseiData[$deleteUserId])) {
+                unset($seiseiData[$deleteUserId]);
+                file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
+            }
+
+            $adminSuccess = 'ユーザーが削除されました。';
+        } else {
+            $adminErrors[] = 'ユーザーが存在しません。';
+        }
     }
 }
 
@@ -128,6 +136,20 @@ function getUserLinks($userId, $seiseiData) {
         }
         button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
+            transform: scale(1.02);
+        }
+        .delete-button {
+            background: linear-gradient(to right, #ff5252, #ff1744);
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            padding: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .delete-button:hover {
+            background: linear-gradient(to right, #ff1744, #ff5252);
             transform: scale(1.02);
         }
         .error {
@@ -242,6 +264,13 @@ function getUserLinks($userId, $seiseiData) {
                         <td><?php echo getUserLinkCount($userIdKey, $seiseiFile); ?></td>
                         <td>
                             <button class="view-links-button" data-user-id="<?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?>">リンクを表示</button>
+                            <?php if ($userIdKey !== 'admin'): ?>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="action" value="delete_user">
+                                    <input type="hidden" name="delete_user_id" value="<?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <button type="submit" class="delete-button" onclick="return confirm('本当に削除しますか？');">削除</button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <tr id="details_<?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?>" class="link-details">
@@ -273,7 +302,7 @@ function getUserLinks($userId, $seiseiData) {
         <?php endif; ?>
 
         <!-- ログアウトリンク -->
-        <p style="margin-top:20px;"><a href="../index.php?action=logout" style="color:#00e5ff;">ログアウト</a></p>
+        <a href="../index.php?action=logout" class="logout-button">ログアウト</a>
     </div>
 </body>
 </html>
