@@ -1,7 +1,1 @@
-{
-    "admin": {
-        "password": "admin",
-        "is_admin": true,
-        "must_change_password": false
-    }
-}
+{}
