@@ -2,6 +2,11 @@
 // セッションの開始
 session_start();
 
+// CSRFトークン生成（トークンが未設定の場合のみ生成）
+if (empty($_SESSION['token'])) {
+    $_SESSION['token'] = bin2hex(random_bytes(32));
+}
+
 // ユーザー情報を格納するJSONファイル
 $usersFile = 'users.json';
 $seiseiFile = 'seisei.json';
@@ -55,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $_SESSION['user_id'] = $inputId;
                 setcookie('user_id', $inputId, $cookieExpire, "/");
                 // 初回ログインチェック
-                if ($usersData[$inputId]['force_change'] === true) {
+                if (isset($usersData[$inputId]['force_change']) && $usersData[$inputId]['force_change'] === true) {
                     $_SESSION['force_change'] = true;
                     header('Location: index.php?force_change=1');
                     exit();
@@ -76,9 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // パスワードおよびID変更処理
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_credentials') {
     if (isset($_SESSION['user_id']) && isset($_SESSION['force_change']) && !$isAdmin) {
-        $newUserId = htmlspecialchars($_POST['new_user_id'], ENT_QUOTES, 'UTF-8');
-        $newPassword = htmlspecialchars($_POST['new_password'], ENT_QUOTES, 'UTF-8');
-        $confirmPassword = htmlspecialchars($_POST['confirm_password'], ENT_QUOTES, 'UTF-8');
+        $newUserId = trim($_POST['new_user_id'] ?? '');
+        $newPassword = $_POST['new_password'] ?? '';
+        $confirmPassword = $_POST['confirm_password'] ?? '';
 
         // バリデーション
         if (empty($newUserId) || empty($newPassword) || empty($confirmPassword)) {
@@ -92,10 +97,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (file_exists($usersFile)) {
                 $usersData = json_decode(file_get_contents($usersFile), true);
                 $oldUserId = $_SESSION['user_id'];
+
                 // IDを変更する場合
                 if ($newUserId !== $oldUserId) {
                     $usersData[$newUserId] = $usersData[$oldUserId];
                     unset($usersData[$oldUserId]);
+
                     // seisei.json内のキーも変更
                     if (file_exists($seiseiFile)) {
                         $seiseiData = json_decode(file_get_contents($seiseiFile), true);
@@ -105,15 +112,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
                         }
                     }
+
+                    // セッションとクッキーを更新
+                    $_SESSION['user_id'] = $newUserId;
+                    setcookie('user_id', $newUserId, $cookieExpire, "/");
                 }
+
                 // パスワードを更新
                 $usersData[$newUserId]['password'] = $newPassword;
                 $usersData[$newUserId]['force_change'] = false;
                 file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
 
-                // セッションとクッキーを更新
-                $_SESSION['user_id'] = $newUserId;
-                setcookie('user_id', $newUserId, $cookieExpire, "/");
+                // セッションフラグを解除
                 unset($_SESSION['force_change']);
                 $success = 'IDとパスワードが変更されました。';
             } else {
@@ -397,7 +407,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             background-color: #3a3a3a;
             outline: none;
         }
-        button {
+        button, .logout-button {
             background: linear-gradient(to right, #00e5ff, #00b0ff);
             color: #000;
             border: none;
@@ -408,29 +418,17 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             cursor: pointer;
             width: 100%;
             transition: transform 0.2s;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
         }
-        button:hover {
+        button:hover, .logout-button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
             transform: scale(1.02);
         }
         .logout-button {
             background: linear-gradient(to right, #ff5252, #ff1744);
             color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            padding: 10px;
-            margin-top: 20px;
-            cursor: pointer;
-            width: 100%;
-            transition: transform 0.2s;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .logout-button:hover {
-            background: linear-gradient(to right, #ff1744, #ff5252);
-            transform: scale(1.02);
         }
         .error {
             color: #ff5252;
@@ -610,6 +608,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     // 各オプションの表示・非表示
                     document.getElementById('imageUrlInput').style.display = 'none';
                     document.getElementById('imageFileInput').style.display = 'none';
+                    document.getElementById('selectedTemplateInput').value = '';
 
                     if (selectedImageOption === 'url') {
                         document.getElementById('imageUrlInput').style.display = 'block';
@@ -741,7 +740,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 });
             });
 
-            // 初回ログイン時のパスワード変更アラート
+            // 初回ログイン時のIDおよびパスワード変更アラート
             <?php if (isset($_GET['force_change']) && $_GET['force_change'] == '1'): ?>
                 window.onload = function() {
                     alert('初回ログインです。IDとパスワードを変更してください。');
@@ -756,14 +755,14 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         <?php if (!empty($errors)): ?>
             <div class="error">
                 <?php foreach ($errors as $error): ?>
-                    <p><?php echo $error; ?></p>
+                    <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
 
         <?php if ($success): ?>
             <div class="success-message">
-                <p><?php echo $success; ?></p>
+                <p><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?></p>
             </div>
         <?php endif; ?>
 
@@ -771,7 +770,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <!-- ユーザーダッシュボード -->
             <form method="POST" action="" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="generate_link">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
                 <input type="hidden" id="editedImageData" name="editedImageData">
                 <input type="hidden" id="imageOptionInput" name="imageOption" required>
                 <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
@@ -810,8 +809,8 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                             foreach ($templates as $template):
                             ?>
                                 <div class="template-item">
-                                    <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                                    <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                                    <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -863,7 +862,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     <h2>リンクを編集</h2>
                     <form method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="action" value="edit_link">
-                        <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                        <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
                         <input type="hidden" id="edit_link_id" name="link_id">
 
                         <label>遷移先URL（必須）</label>
@@ -899,8 +898,8 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                                     foreach ($templates as $template):
                                     ?>
                                         <div class="template-item">
-                                            <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                                            <input type="radio" name="new_templateRadio" value="<?php echo $template; ?>">
+                                            <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="radio" name="new_templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -996,7 +995,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     });
                 });
 
-                // リンク編集時の画像プレビューと切り抜き処理
+                // 編集フォームの画像プレビューと切り抜き処理
                 const editImageFileInput = editModal.querySelector('input[name="new_imageFile"]');
                 if (editImageFileInput) {
                     editImageFileInput.addEventListener('change', function() {
@@ -1062,7 +1061,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <div id="credentialsChangeSection" style="display:none;">
                 <form method="POST">
                     <input type="hidden" name="action" value="change_credentials">
-                    <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                    <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
 
                     <h2>IDおよびパスワードの変更</h2>
 
