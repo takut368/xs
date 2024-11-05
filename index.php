@@ -2,186 +2,127 @@
 // セッションの開始
 session_start();
 
-// ユーザー認証のチェック
-if (!isset($_SESSION['user_id'])) {
-    // クッキーからの認証チェック
-    if (isset($_COOKIE['user_id']) && isset($_COOKIE['auth_token'])) {
-        $user_id = $_COOKIE['user_id'];
-        $auth_token = $_COOKIE['auth_token'];
-        // users.jsonからユーザー情報を取得
-        $users = json_decode(file_get_contents('users.json'), true);
-        if (isset($users[$user_id]) && $users[$user_id]['auth_token'] === $auth_token) {
-            $_SESSION['user_id'] = $user_id;
-            $_SESSION['is_admin'] = $users[$user_id]['is_admin'];
-        }
-    }
+// ユーザー情報を格納するJSONファイル
+$usersFile = 'users.json';
+$seiseiFile = 'seisei.json';
+
+// 管理者IDとパスワード
+define('ADMIN_ID', 'admin');
+define('ADMIN_PASSWORD', 'admin');
+
+// クッキーの有効期限（例: 1時間）
+$cookieExpire = time() + 3600;
+
+// 初期化
+$errors = [];
+$success = '';
+$generatedLink = '';
+
+// ユーザーがログインしているか確認
+if (isset($_SESSION['user_id'])) {
+    // ログイン済み
+    $userId = $_SESSION['user_id'];
+    $isAdmin = ($userId === ADMIN_ID);
+} elseif (isset($_COOKIE['user_id'])) {
+    // クッキーにより自動ログイン
+    $userId = $_COOKIE['user_id'];
+    $_SESSION['user_id'] = $userId;
+    $isAdmin = ($userId === ADMIN_ID);
+} else {
+    // 未ログイン
+    $userId = '';
+    $isAdmin = false;
 }
 
-// リダイレクト処理
-if (!isset($_SESSION['user_id'])) {
-    // ログインフォームの表示
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $input_id = htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8');
-        $input_password = $_POST['password'];
-        
-        // users.jsonからユーザー情報を取得
-        $users = json_decode(file_get_contents('users.json'), true);
-        
-        if (isset($users[$input_id])) {
-            // パスワードの検証
-            if (password_verify($input_password, $users[$input_id]['password'])) {
-                $_SESSION['user_id'] = $input_id;
-                $_SESSION['is_admin'] = $users[$input_id]['is_admin'];
-                
-                // クッキーに認証情報を保存（有効期限：30分）
-                setcookie('user_id', $input_id, time() + 1800, "/");
-                setcookie('auth_token', $users[$input_id]['auth_token'], time() + 1800, "/");
-                
-                // パスワード変更が必要な場合
-                if ($users[$input_id]['password_change_required'] === true) {
-                    header('Location: change_password.php');
+// ログイン処理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
+    $inputId = $_POST['login_id'] ?? '';
+    $inputPassword = $_POST['login_password'] ?? '';
+
+    // 管理者ログイン
+    if ($inputId === ADMIN_ID && $inputPassword === ADMIN_PASSWORD) {
+        $_SESSION['user_id'] = ADMIN_ID;
+        setcookie('user_id', ADMIN_ID, $cookieExpire, "/");
+        header('Location: admin/index.php');
+        exit();
+    }
+
+    // 一般ユーザーログイン
+    if (file_exists($usersFile)) {
+        $usersData = json_decode(file_get_contents($usersFile), true);
+        if (isset($usersData[$inputId])) {
+            if ($usersData[$inputId]['password'] === $inputPassword) {
+                $_SESSION['user_id'] = $inputId;
+                setcookie('user_id', $inputId, $cookieExpire, "/");
+                // 初回ログインチェック
+                if ($usersData[$inputId]['force_change'] === true) {
+                    $_SESSION['force_change'] = true;
+                    header('Location: index.php?force_change=1');
                     exit();
                 }
-                
-                header('Location: index.php');
-                exit();
+                $userId = $inputId;
+                $isAdmin = false;
+            } else {
+                $errors[] = 'パスワードが間違っています。';
+            }
+        } else {
+            $errors[] = 'ユーザーIDが存在しません。';
+        }
+    } else {
+        $errors[] = 'ユーザーデータが存在しません。';
+    }
+}
+
+// パスワード変更処理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
+    if (isset($_SESSION['user_id']) && isset($_SESSION['force_change'])) {
+        $newPassword = $_POST['new_password'] ?? '';
+        $confirmPassword = $_POST['confirm_password'] ?? '';
+
+        if (empty($newPassword) || empty($confirmPassword)) {
+            $errors[] = '新しいパスワードを入力してください。';
+        } elseif ($newPassword !== $confirmPassword) {
+            $errors[] = 'パスワードが一致しません。';
+        } else {
+            // ユーザー情報を更新
+            if (file_exists($usersFile)) {
+                $usersData = json_decode(file_get_contents($usersFile), true);
+                $usersData[$_SESSION['user_id']]['password'] = $newPassword;
+                $usersData[$_SESSION['user_id']]['force_change'] = false;
+                file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
+                unset($_SESSION['force_change']);
+                $success = 'パスワードが変更されました。';
+            } else {
+                $errors[] = 'ユーザーデータが存在しません。';
             }
         }
-        $error = "IDまたはパスワードが間違っています。";
+    } else {
+        $errors[] = 'パスワード変更の権限がありません。';
     }
-    ?>
-    <!DOCTYPE html>
-    <html lang="ja">
-    <head>
-        <meta charset="UTF-8">
-        <title>ログイン - サムネイル付きリンク生成サービス</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            /* リセットCSS */
-            * {
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }
-            /* 共通スタイル */
-            body {
-                background-color: #121212;
-                color: #ffffff;
-                font-family: 'Helvetica Neue', Arial, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                overflow: hidden;
-            }
-            .login-container {
-                background-color: #1e1e1e;
-                padding: 30px;
-                border-radius: 10px;
-                width: 90%;
-                max-width: 400px;
-                box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                animation: fadeInUp 1s ease-in-out;
-            }
-            h2 {
-                text-align: center;
-                margin-bottom: 20px;
-                font-size: 24px;
-            }
-            label {
-                display: block;
-                margin-bottom: 5px;
-                font-weight: bold;
-            }
-            input[type="text"],
-            input[type="password"] {
-                width: 100%;
-                padding: 10px;
-                margin-bottom: 15px;
-                border: none;
-                border-radius: 5px;
-                background-color: #2a2a2a;
-                color: #ffffff;
-                transition: background-color 0.3s;
-            }
-            input[type="text"]:focus,
-            input[type="password"]:focus {
-                background-color: #3a3a3a;
-                outline: none;
-            }
-            .login-button {
-                width: 100%;
-                padding: 10px;
-                background: linear-gradient(to right, #00e5ff, #00b0ff);
-                border: none;
-                border-radius: 5px;
-                font-size: 16px;
-                cursor: pointer;
-                transition: transform 0.2s;
-            }
-            .login-button:hover {
-                background: linear-gradient(to right, #00b0ff, #00e5ff);
-                transform: scale(1.02);
-            }
-            .error {
-                color: #ff5252;
-                margin-bottom: 15px;
-                text-align: center;
-                animation: shake 0.5s;
-            }
-            /* アニメーション */
-            @keyframes fadeInUp {
-                from { opacity: 0; transform: translateY(20px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes shake {
-                0% { transform: translateX(0); }
-                25% { transform: translateX(-5px); }
-                50% { transform: translateX(5px); }
-                75% { transform: translateX(-5px); }
-                100% { transform: translateX(0); }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <h2>ログイン</h2>
-            <?php if (isset($error)): ?>
-                <div class="error"><?php echo $error; ?></div>
-            <?php endif; ?>
-            <form method="POST" action="index.php">
-                <label for="username">ID</label>
-                <input type="text" id="username" name="username" required>
-                
-                <label for="password">パスワード</label>
-                <input type="password" id="password" name="password" required>
-                
-                <button type="submit" class="login-button">ログイン</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    <?php
+}
+
+// ログアウト処理
+if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+    session_destroy();
+    setcookie('user_id', '', time() - 3600, "/");
+    header('Location: index.php');
     exit();
 }
 
-// ユーザーがログインしている場合
-
-$user_id = $_SESSION['user_id'];
-$is_admin = $_SESSION['is_admin'];
-
-// パスワード変更ページへのリダイレクト
-$users = json_decode(file_get_contents('users.json'), true);
-if ($users[$user_id]['password_change_required'] === true && !$is_admin) {
-    header('Location: change_password.php');
-    exit();
+// ユーザーのリンク生成数取得
+function getUserLinkCount($userId, $seiseiFile) {
+    if (!file_exists($seiseiFile)) {
+        return 0;
+    }
+    $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+    return isset($seiseiData[$userId]) ? count($seiseiData[$userId]) : 0;
 }
 
-// リンク生成および管理の処理
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['generate_link'])) {
-        // リンク生成フォームの処理
-        $linkA = filter_var($_POST['linkA'], FILTER_SANITIZE_URL);
+// リンク生成処理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_link') {
+    if (!empty($userId) && !$isAdmin) {
+        // フォームデータの取得とサニタイズ
+        $linkA = filter_input(INPUT_POST, 'linkA', FILTER_SANITIZE_URL);
         $title = htmlspecialchars($_POST['title'], ENT_QUOTES, 'UTF-8');
         $description = htmlspecialchars($_POST['description'] ?? '', ENT_QUOTES, 'UTF-8');
         $twitterSite = htmlspecialchars($_POST['twitterSite'] ?? '', ENT_QUOTES, 'UTF-8');
@@ -189,9 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $imageOption = $_POST['imageOption'] ?? '';
         $selectedTemplate = $_POST['selectedTemplate'] ?? '';
         $editedImageData = $_POST['editedImageData'] ?? '';
-        
+
         // バリデーション
-        $errors = [];
         if (empty($linkA) || !filter_var($linkA, FILTER_VALIDATE_URL)) {
             $errors[] = '有効な遷移先URLを入力してください。';
         }
@@ -201,166 +141,149 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($imageOption, ['url', 'upload', 'template'])) {
             $errors[] = 'サムネイル画像の選択方法を選んでください。';
         }
-        
+
+        // サムネイル画像の処理
         if (empty($errors)) {
             $imagePath = '';
+
             if ($imageOption === 'template') {
-                // テンプレート画像の使用
+                // テンプレート画像を使用
                 $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
                 if (!in_array($selectedTemplate, $templateImages)) {
                     $errors[] = '有効なテンプレート画像を選択してください。';
                 } else {
-                    $imagePath = 'temp/' . $selectedTemplate;
+                    $imagePath = '../temp/' . $selectedTemplate;
                 }
             }
-            
-            // クライアント側で処理された画像の保存
+
+            // 画像編集テンプレートの適用またはクライアント側で処理された画像の保存
             if (!empty($editedImageData)) {
                 $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
                 $imagePath = saveImage($imageData);
             }
-            
+
             if (empty($imagePath)) {
                 $errors[] = '画像の処理に失敗しました。';
             }
-            
+
+            // リンクの生成
             if (empty($errors)) {
-                // seisei.jsonにリンク情報を保存
-                $seisei = json_decode(file_get_contents('seisei.json'), true);
-                if (!$seisei) {
-                    $seisei = [];
-                }
-                $link_id = uniqid();
-                $seisei[$user_id][$link_id] = [
-                    'linkA' => $linkA,
-                    'title' => $title,
-                    'description' => $description,
-                    'twitterSite' => $twitterSite,
-                    'imageAlt' => $imageAlt,
-                    'imagePath' => $imagePath,
-                    'created_at' => date('Y-m-d H:i:s')
-                ];
-                file_put_contents('seisei.json', json_encode($seisei, JSON_PRETTY_PRINT));
-                $success = "リンクが生成されました。";
-            }
-        }
-    }
-    
-    // リンク編集フォームの処理
-    if (isset($_POST['edit_link'])) {
-        $link_id = $_POST['link_id'];
-        $linkA = filter_var($_POST['linkA'], FILTER_SANITIZE_URL);
-        $title = htmlspecialchars($_POST['title'], ENT_QUOTES, 'UTF-8');
-        $description = htmlspecialchars($_POST['description'] ?? '', ENT_QUOTES, 'UTF-8');
-        $twitterSite = htmlspecialchars($_POST['twitterSite'] ?? '', ENT_QUOTES, 'UTF-8');
-        $imageAlt = htmlspecialchars($_POST['imageAlt'] ?? '', ENT_QUOTES, 'UTF-8');
-        $imageOption = $_POST['imageOption'] ?? '';
-        $selectedTemplate = $_POST['selectedTemplate'] ?? '';
-        $editedImageData = $_POST['editedImageData'] ?? '';
-        
-        // バリデーション
-        $errors = [];
-        if (empty($linkA) || !filter_var($linkA, FILTER_VALIDATE_URL)) {
-            $errors[] = '有効な遷移先URLを入力してください。';
-        }
-        if (empty($title)) {
-            $errors[] = 'タイトルを入力してください。';
-        }
-        if (!in_array($imageOption, ['url', 'upload', 'template'])) {
-            $errors[] = 'サムネイル画像の選択方法を選んでください。';
-        }
-        
-        if (empty($errors)) {
-            $imagePath = '';
-            if ($imageOption === 'template') {
-                // テンプレート画像の使用
-                $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                if (!in_array($selectedTemplate, $templateImages)) {
-                    $errors[] = '有効なテンプレート画像を選択してください。';
+                $uniqueId = uniqid();
+                $dirPath = $uniqueId;
+                if (!mkdir($dirPath, 0777, true)) {
+                    $errors[] = 'ディレクトリの作成に失敗しました。';
                 } else {
-                    $imagePath = 'temp/' . $selectedTemplate;
-                }
-            }
-            
-            // クライアント側で処理された画像の保存
-            if (!empty($editedImageData)) {
-                $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
-                $imagePath = saveImage($imageData);
-            }
-            
-            if (empty($imagePath)) {
-                $errors[] = '画像の処理に失敗しました。';
-            }
-            
-            if (empty($errors)) {
-                // seisei.jsonにリンク情報を更新
-                $seisei = json_decode(file_get_contents('seisei.json'), true);
-                if (isset($seisei[$user_id][$link_id])) {
-                    $seisei[$user_id][$link_id] = [
-                        'linkA' => $linkA,
+                    $filePath = $dirPath . '/index.php';
+                    $htmlContent = generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath);
+                    file_put_contents($filePath, $htmlContent);
+                    $generatedLink = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $uniqueId;
+
+                    // seisei.jsonに記録
+                    if (!file_exists($seiseiFile)) {
+                        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT));
+                    }
+                    $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+                    if (!isset($seiseiData[$userId])) {
+                        $seiseiData[$userId] = [];
+                    }
+                    $seiseiData[$userId][] = [
+                        'id' => $uniqueId,
+                        'link' => $generatedLink,
+                        'redirect_url' => $linkA,
                         'title' => $title,
                         'description' => $description,
-                        'twitterSite' => $twitterSite,
-                        'imageAlt' => $imageAlt,
-                        'imagePath' => $imagePath,
-                        'created_at' => $seisei[$user_id][$link_id]['created_at'],
-                        'updated_at' => date('Y-m-d H:i:s')
+                        'twitter_site' => $twitterSite,
+                        'image_alt' => $imageAlt,
+                        'image_path' => $imagePath,
+                        'created_at' => date('Y-m-d H:i:s')
                     ];
-                    file_put_contents('seisei.json', json_encode($seisei, JSON_PRETTY_PRINT));
-                    $success = "リンクが更新されました。";
-                } else {
-                    $errors[] = 'リンクが見つかりませんでした。';
+                    file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
+
+                    $success = 'リンクが生成されました。';
                 }
             }
         }
+    } else {
+        $errors[] = 'ログインが必要です。';
     }
 }
 
-// 画像保存関数
-function saveImage($imageData)
-{
-    $imageName = uniqid() . '.png';
-    $imagePath = 'uploads/' . $imageName;
-    file_put_contents($imagePath, $imageData);
-    return $imagePath;
+// リンク編集処理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_link') {
+    if (!empty($userId) && !$isAdmin) {
+        $linkId = $_POST['link_id'] ?? '';
+        $newRedirectUrl = filter_input(INPUT_POST, 'new_redirect_url', FILTER_SANITIZE_URL);
+        $newTitle = htmlspecialchars($_POST['new_title'], ENT_QUOTES, 'UTF-8');
+        $newDescription = htmlspecialchars($_POST['new_description'] ?? '', ENT_QUOTES, 'UTF-8');
+        $newTwitterSite = htmlspecialchars($_POST['new_twitterSite'] ?? '', ENT_QUOTES, 'UTF-8');
+        $newImageAlt = htmlspecialchars($_POST['new_imageAlt'] ?? '', ENT_QUOTES, 'UTF-8');
+        $newImageOption = $_POST['new_imageOption'] ?? '';
+        $newSelectedTemplate = $_POST['new_selectedTemplate'] ?? '';
+        $newEditedImageData = $_POST['new_editedImageData'] ?? '';
+
+        // バリデーション
+        if (empty($newRedirectUrl) || !filter_var($newRedirectUrl, FILTER_VALIDATE_URL)) {
+            $errors[] = '有効な遷移先URLを入力してください。';
+        }
+        if (empty($newTitle)) {
+            $errors[] = 'タイトルを入力してください。';
+        }
+        if (!in_array($newImageOption, ['url', 'upload', 'template'])) {
+            $errors[] = 'サムネイル画像の選択方法を選んでください。';
+        }
+
+        // リンクデータの取得
+        if (file_exists($seiseiFile)) {
+            $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+            if (isset($seiseiData[$userId])) {
+                foreach ($seiseiData[$userId] as &$link) {
+                    if ($link['id'] === $linkId) {
+                        // サムネイル画像の処理
+                        if ($newImageOption === 'template') {
+                            $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                            if (!in_array($newSelectedTemplate, $templateImages)) {
+                                $errors[] = '有効なテンプレート画像を選択してください。';
+                            } else {
+                                $link['image_path'] = '../temp/' . $newSelectedTemplate;
+                            }
+                        }
+
+                        if (!empty($newEditedImageData)) {
+                            $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $newEditedImageData));
+                            $link['image_path'] = saveImage($imageData);
+                        }
+
+                        // データの更新
+                        $link['redirect_url'] = $newRedirectUrl;
+                        $link['title'] = $newTitle;
+                        $link['description'] = $newDescription;
+                        $link['twitter_site'] = $newTwitterSite;
+                        $link['image_alt'] = $newImageAlt;
+                        $link['updated_at'] = date('Y-m-d H:i:s');
+                        break;
+                    }
+                }
+                unset($link);
+                file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
+                $success = 'リンクが更新されました。';
+            } else {
+                $errors[] = 'リンクが見つかりません。';
+            }
+        } else {
+            $errors[] = 'リンクデータが存在しません。';
+        }
+    } else {
+        $errors[] = 'ログインが必要です。';
+    }
 }
 
-// リンク生成コンテンツ生成関数
-function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath)
-{
-    $imageUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $imagePath;
-    $metaDescription = !empty($description) ? $description : $title;
-    $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . $twitterSite . '">' : '';
-    $imageAltTag = !empty($imageAlt) ? $imageAlt : $title;
-
-    $html = '<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>' . $title . '</title>
-    <meta name="description" content="' . $metaDescription . '">
-    <meta http-equiv="refresh" content="0; URL=' . htmlspecialchars($linkA, ENT_QUOTES, 'UTF-8') . '">
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    ' . $twitterSiteTag . '
-    <meta name="twitter:title" content="' . $title . '">
-    <meta name="twitter:description" content="' . $metaDescription . '">
-    <meta name="twitter:image" content="' . $imageUrl . '">
-    <meta name="twitter:image:alt" content="' . $imageAltTag . '">
-</head>
-<body>
-    <p>リダイレクト中...</p>
-</body>
-</html>';
-
-    return $html;
-}
+// ログインフォームまたはユーザーダッシュボードの表示
 ?>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>サムネイル付きリンク生成サービス</title>
+    <title>サムネイル付きリンク生成サービス - ログイン</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* リセットCSS */
@@ -377,7 +300,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             overflow-x: hidden;
         }
         .container {
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
             animation: fadeIn 1s ease-in-out;
@@ -385,7 +308,6 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         h1 {
             text-align: center;
             margin-bottom: 20px;
-            font-size: 28px;
         }
         label {
             display: block;
@@ -395,6 +317,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         }
         input[type="text"],
         input[type="url"],
+        input[type="password"],
         textarea {
             width: 100%;
             background-color: #2a2a2a;
@@ -408,12 +331,12 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         }
         input[type="text"]:focus,
         input[type="url"]:focus,
+        input[type="password"]:focus,
         textarea:focus {
             background-color: #3a3a3a;
             outline: none;
         }
-        .generate-button,
-        .edit-button {
+        button {
             background: linear-gradient(to right, #00e5ff, #00b0ff);
             color: #000;
             border: none;
@@ -425,8 +348,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             width: 100%;
             transition: transform 0.2s;
         }
-        .generate-button:hover,
-        .edit-button:hover {
+        button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
             transform: scale(1.02);
         }
@@ -436,32 +358,38 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             animation: shake 0.5s;
             margin-top: 10px;
         }
-        .success {
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+        .success-message {
             background-color: #1e1e1e;
-            color: #00ff00;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            animation: fadeIn 0.5s;
-        }
-        .links-table {
-            width: 100%;
-            border-collapse: collapse;
+            color: #ffffff;
+            border-radius: 10px;
+            padding: 15px;
             margin-top: 20px;
+            animation: fadeInUp 0.5s;
         }
-        .links-table th,
-        .links-table td {
-            border: 1px solid #444;
+        .success-message input[type="text"] {
+            width: 70%;
+            margin-top: 10px;
+            display: inline-block;
+            background-color: #2a2a2a;
+        }
+        .success-message button {
+            width: 25%;
+            margin-left: 5%;
+            display: inline-block;
             padding: 10px;
-            text-align: left;
         }
-        .links-table th {
-            background-color: #333;
-        }
-        .edit-button {
-            width: auto;
-            padding: 5px 10px;
-            font-size: 14px;
+        .preview-image {
+            max-width: 100%;
+            border-radius: 5px;
+            margin-top: 20px;
+            animation: fadeIn 0.5s;
         }
         /* モーダルスタイル */
         .modal {
@@ -539,13 +467,6 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             from { transform: scale(0.8); }
             to { transform: scale(1); }
         }
-        @keyframes shake {
-            0% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            50% { transform: translateX(5px); }
-            75% { transform: translateX(-5px); }
-            100% { transform: translateX(0); }
-        }
         /* 画像選択ボタンのスタイル */
         .image-option-buttons {
             display: flex;
@@ -592,7 +513,6 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         }
     </style>
     <script>
-        // JavaScriptをここに記述
         document.addEventListener('DOMContentLoaded', function() {
             let selectedImageOption = '';
 
@@ -741,157 +661,303 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 });
             });
 
-            // リンク編集モーダルの処理
-            const editModals = document.querySelectorAll('.edit-modal');
-            const editCloseButtons = document.querySelectorAll('.edit-close');
-
-            editCloseButtons.forEach(closeBtn => {
-                closeBtn.addEventListener('click', function() {
-                    this.parentElement.parentElement.style.display = 'none';
-                });
-            });
-
-            window.addEventListener('click', function(event) {
-                editModals.forEach(modal => {
-                    if (event.target == modal) {
-                        modal.style.display = 'none';
-                    }
-                });
-            });
-
-            // 編集ボタンの処理
-            const editButtons = document.querySelectorAll('.edit-button');
-            editButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const linkId = this.dataset.linkId;
-                    document.getElementById('editModal_' + linkId).style.display = 'block';
-                });
-            });
-        });
-    </script>
+            // 初回ログイン時のパスワード変更
+            <?php if (isset($_GET['force_change']) && $_GET['force_change'] == '1'): ?>
+                alert('初回ログインです。パスワードを変更してください。');
+                // 自動的にパスワード変更セクションを表示
+                document.getElementById('passwordChangeSection').style.display = 'block';
+            <?php endif; ?>
+        </script>
 </head>
 <body>
     <div class="container">
         <h1>サムネイル付きリンク生成サービス</h1>
-        <?php if (isset($errors) && !empty($errors)): ?>
+        <?php if (!empty($errors)): ?>
             <div class="error">
                 <?php foreach ($errors as $error): ?>
                     <p><?php echo $error; ?></p>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
-        <?php if (isset($success)): ?>
-            <div class="success">
-                <?php echo $success; ?>
+
+        <?php if ($success): ?>
+            <div class="success-message">
+                <p>リンクが生成されました：</p>
+                <input type="text" id="generatedLink" value="<?php echo $generatedLink; ?>" readonly>
+                <button id="copyButton">コピー</button>
+                <p>保存しない場合、再度登録が必要です。</p>
             </div>
         <?php endif; ?>
 
-        <!-- リンク生成フォーム -->
-        <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="imageOption" id="imageOptionInput" required>
-            <input type="hidden" name="selectedTemplate" id="selectedTemplateInput">
-            <input type="hidden" name="editedImageData" id="editedImageData">
+        <?php if (isset($_SESSION['user_id']) && !$isAdmin): ?>
+            <!-- ユーザーダッシュボード -->
+            <form method="POST">
+                <input type="hidden" name="action" value="generate_link">
+                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
 
-            <label>遷移先URL（必須）</label>
-            <input type="url" name="linkA" required>
+                <label>遷移先URL（必須）</label>
+                <input type="url" name="linkA" required>
 
-            <label>タイトル（必須）</label>
-            <input type="text" name="title" required>
+                <label>タイトル（必須）</label>
+                <input type="text" name="title" required>
 
-            <label>サムネイル画像の選択方法（必須）</label>
-            <div class="image-option-buttons">
-                <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
-                <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
-            </div>
+                <label>サムネイル画像の選択方法（必須）</label>
+                <div class="image-option-buttons">
+                    <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                    <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                </div>
+                <div class="image-option-buttons">
+                    <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
+                </div>
 
-            <div id="imageUrlInput" style="display:none;">
-                <label>画像URLを入力</label>
-                <input type="url" name="imageUrl">
-            </div>
+                <div id="imageUrlInput" style="display:none;">
+                    <label>画像URLを入力</label>
+                    <input type="url" name="imageUrl">
+                </div>
 
-            <div id="imageFileInput" style="display:none;">
-                <label>画像ファイルをアップロード</label>
-                <input type="file" name="imageFile" accept="image/*">
-            </div>
+                <div id="imageFileInput" style="display:none;">
+                    <label>画像ファイルをアップロード</label>
+                    <input type="file" name="imageFile" accept="image/*">
+                </div>
 
-            <button type="submit" name="generate_link" class="generate-button">リンクを生成</button>
-        </form>
-
-        <!-- ユーザーが生成したリンクの一覧 -->
-        <?php
-        $seisei = json_decode(file_get_contents('seisei.json'), true);
-        if (isset($seisei[$user_id])) {
-            echo '<h2>生成したリンク一覧</h2>';
-            echo '<table class="links-table">';
-            echo '<tr><th>タイトル</th><th>遷移先URL</th><th>作成日時</th><th>操作</th></tr>';
-            foreach ($seisei[$user_id] as $link_id => $link) {
-                echo '<tr>';
-                echo '<td>' . $link['title'] . '</td>';
-                echo '<td><a href="' . htmlspecialchars($link['linkA'], ENT_QUOTES, 'UTF-8') . '" target="_blank">' . htmlspecialchars($link['linkA'], ENT_QUOTES, 'UTF-8') . '</a></td>';
-                echo '<td>' . $link['created_at'] . '</td>';
-                echo '<td><button class="edit-button" data-link-id="' . $link_id . '">編集</button></td>';
-                echo '</tr>';
-                
-                // 編集モーダル
-                echo '<div id="editModal_' . $link_id . '" class="modal edit-modal">';
-                echo '<div class="modal-content">';
-                echo '<span class="close edit-close">&times;</span>';
-                echo '<h2>リンク編集</h2>';
-                echo '<form method="POST" enctype="multipart/form-data">';
-                echo '<input type="hidden" name="link_id" value="' . $link_id . '">';
-                echo '<label>遷移先URL（必須）</label>';
-                echo '<input type="url" name="linkA" value="' . htmlspecialchars($link['linkA'], ENT_QUOTES, 'UTF-8') . '" required>';
-                echo '<label>タイトル（必須）</label>';
-                echo '<input type="text" name="title" value="' . htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8') . '" required>';
-                echo '<label>ページの説明</label>';
-                echo '<textarea name="description">' . htmlspecialchars($link['description'], ENT_QUOTES, 'UTF-8') . '</textarea>';
-                echo '<label>Twitterアカウント名（@を含む）</label>';
-                echo '<input type="text" name="twitterSite" value="' . htmlspecialchars($link['twitterSite'], ENT_QUOTES, 'UTF-8') . '">';
-                echo '<label>画像の代替テキスト</label>';
-                echo '<input type="text" name="imageAlt" value="' . htmlspecialchars($link['imageAlt'], ENT_QUOTES, 'UTF-8') . '">';
-                echo '<label>サムネイル画像の選択方法（必須）</label>';
-                echo '<div class="image-option-buttons">';
-                echo '<button type="button" class="image-option-button" data-option="url">画像URLを入力</button>';
-                echo '<button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>';
-                echo '<button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>';
-                echo '</div>';
-                echo '<div id="edit_imageUrlInput_' . $link_id . '" style="display:none;">';
-                echo '<label>画像URLを入力</label>';
-                echo '<input type="url" name="imageUrl">';
-                echo '</div>';
-                echo '<div id="edit_imageFileInput_' . $link_id . '" style="display:none;">';
-                echo '<label>画像ファイルをアップロード</label>';
-                echo '<input type="file" name="imageFile" accept="image/*">';
-                echo '</div>';
-                echo '<button type="submit" name="edit_link" class="edit-button">更新</button>';
-                echo '</form>';
-                echo '</div>';
-                echo '</div>';
-            }
-            echo '</table>';
-        }
-        ?>
-
-        <!-- テンプレート選択モーダル -->
-        <div id="templateModal" class="modal">
-            <div class="modal-content">
-                <span class="close" id="templateClose">&times;</span>
-                <h2>テンプレートを選択</h2>
-                <div class="template-grid">
-                    <?php
-                    $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                    foreach ($templates as $template):
-                    ?>
-                        <div class="template-item">
-                            <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                            <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                <!-- テンプレート選択モーダル -->
+                <div id="templateModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close" id="templateClose">&times;</span>
+                        <h2>テンプレートを選択</h2>
+                        <div class="template-grid">
+                            <?php
+                            $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                            foreach ($templates as $template):
+                            ?>
+                                <div class="template-item">
+                                    <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                                    <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                                </div>
+                            <?php endforeach; ?>
                         </div>
-                    <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <button type="button" id="toggleDetails">詳細設定</button>
+                <div id="detailsSection" class="details-section">
+                    <label>ページの説明</label>
+                    <textarea name="description"></textarea>
+
+                    <label>Twitterアカウント名（@を含む）</label>
+                    <input type="text" name="twitterSite">
+
+                    <label>画像の代替テキスト</label>
+                    <input type="text" name="imageAlt">
+                </div>
+
+                <button type="submit">リンクを生成</button>
+            </form>
+
+            <!-- ユーザーのリンク一覧 -->
+            <h2 style="margin-top: 40px;">あなたの生成したリンク一覧</h2>
+            <?php
+            if (file_exists($seiseiFile)) {
+                $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+                if (isset($seiseiData[$userId]) && count($seiseiData[$userId]) > 0) {
+                    echo '<table border="1" cellpadding="10" cellspacing="0" style="width:100%; margin-top:10px;">';
+                    echo '<tr><th>ID</th><th>リンク</th><th>タイトル</th><th>操作</th></tr>';
+                    foreach ($seiseiData[$userId] as $link) {
+                        echo '<tr>';
+                        echo '<td>' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '</td>';
+                        echo '<td><a href="' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '" target="_blank">' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '</a></td>';
+                        echo '<td>' . htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8') . '</td>';
+                        echo '<td><button onclick="editLink(\'' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '\')">編集</button></td>';
+                        echo '</tr>';
+                    }
+                    echo '</table>';
+                } else {
+                    echo '<p>生成されたリンクはありません。</p>';
+                }
+            }
+            ?>
+
+            <!-- リンク編集モーダル -->
+            <div id="editModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" id="editClose">&times;</span>
+                    <h2>リンクを編集</h2>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="edit_link">
+                        <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                        <input type="hidden" id="edit_link_id" name="link_id">
+
+                        <label>遷移先URL（必須）</label>
+                        <input type="url" name="new_redirect_url" required>
+
+                        <label>タイトル（必須）</label>
+                        <input type="text" name="new_title" required>
+
+                        <label>サムネイル画像の選択方法（必須）</label>
+                        <div class="image-option-buttons">
+                            <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                            <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                        </div>
+                        <div class="image-option-buttons">
+                            <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
+                        </div>
+
+                        <div id="edit_imageUrlInput" style="display:none;">
+                            <label>画像URLを入力</label>
+                            <input type="url" name="new_imageUrl">
+                        </div>
+
+                        <div id="edit_imageFileInput" style="display:none;">
+                            <label>画像ファイルをアップロード</label>
+                            <input type="file" name="new_imageFile" accept="image/*">
+                        </div>
+
+                        <!-- テンプレート選択モーダル -->
+                        <div id="editTemplateModal" class="modal">
+                            <div class="modal-content">
+                                <span class="close" id="editTemplateClose">&times;</span>
+                                <h2>テンプレートを選択</h2>
+                                <div class="template-grid">
+                                    <?php
+                                    foreach ($templates as $template):
+                                    ?>
+                                        <div class="template-item">
+                                            <img src="../temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                                            <input type="radio" name="new_templateRadio" value="<?php echo $template; ?>">
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label>ページの説明</label>
+                        <textarea name="new_description"></textarea>
+
+                        <label>Twitterアカウント名（@を含む）</label>
+                        <input type="text" name="new_twitterSite">
+
+                        <label>画像の代替テキスト</label>
+                        <input type="text" name="new_imageAlt">
+
+                        <button type="submit">更新</button>
+                    </form>
                 </div>
             </div>
-        </div>
 
+            <script>
+                // リンク編集モーダルの処理
+                const editModal = document.getElementById('editModal');
+                const editClose = document.getElementById('editClose');
+                const editTemplateModal = document.getElementById('editTemplateModal');
+                const editTemplateClose = document.getElementById('editTemplateClose');
+
+                function editLink(linkId) {
+                    document.getElementById('edit_link_id').value = linkId;
+                    editModal.style.display = 'block';
+                }
+
+                editClose.addEventListener('click', function() {
+                    editModal.style.display = 'none';
+                });
+
+                window.addEventListener('click', function(event) {
+                    if (event.target == editModal) {
+                        editModal.style.display = 'none';
+                    }
+                    if (event.target == editTemplateModal) {
+                        editTemplateModal.style.display = 'none';
+                    }
+                });
+
+                // 編集リンクの画像選択ボタン処理
+                const editImageOptionButtons = editModal.querySelectorAll('.image-option-button');
+                editImageOptionButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        // クラスの切り替え
+                        editImageOptionButtons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+
+                        const selectedOption = this.dataset.option;
+                        document.getElementById('edit_imageOptionInput').value = selectedOption;
+
+                        // 各オプションの表示・非表示
+                        document.getElementById('edit_imageUrlInput').style.display = 'none';
+                        document.getElementById('edit_imageFileInput').style.display = 'none';
+
+                        if (selectedOption === 'url') {
+                            document.getElementById('edit_imageUrlInput').style.display = 'block';
+                        } else if (selectedOption === 'upload') {
+                            document.getElementById('edit_imageFileInput').style.display = 'block';
+                        } else if (selectedOption === 'template') {
+                            // テンプレート選択モーダルを表示
+                            openEditTemplateModal();
+                        }
+                    });
+                });
+
+                // 編集リンクのテンプレート選択モーダルの処理
+                function openEditTemplateModal() {
+                    editTemplateModal.style.display = 'block';
+                }
+
+                editTemplateClose.addEventListener('click', function() {
+                    editTemplateModal.style.display = 'none';
+                });
+
+                const editTemplateItems = editTemplateModal.querySelectorAll('.template-item');
+                editTemplateItems.forEach(item => {
+                    item.addEventListener('click', function() {
+                        const radio = this.querySelector('input[type="radio"]');
+                        radio.checked = true;
+                        editTemplateModal.style.display = 'none';
+                        // プレビュー表示
+                        let preview = document.getElementById('edit_imagePreview');
+                        if (!preview) {
+                            preview = document.createElement('img');
+                            preview.id = 'edit_imagePreview';
+                            preview.classList.add('preview-image');
+                            editModal.querySelector('.modal-content').appendChild(preview);
+                        }
+                        preview.src = this.querySelector('img').src;
+                        // サーバーに送信するselectedTemplateの値を設定
+                        document.getElementById('new_selectedTemplate').value = radio.value;
+                    });
+                });
+            </script>
+
+        <?php elseif (isset($_SESSION['user_id']) && isset($_SESSION['force_change']) && !$isAdmin): ?>
+            <!-- パスワード変更フォーム -->
+            <form method="POST">
+                <input type="hidden" name="action" value="change_password">
+                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+
+                <h2>パスワードの変更</h2>
+
+                <label>新しいパスワード</label>
+                <input type="password" name="new_password" required>
+
+                <label>新しいパスワード（確認）</label>
+                <input type="password" name="confirm_password" required>
+
+                <button type="submit">変更</button>
+            </form>
+        <?php else: ?>
+            <!-- ログインフォーム -->
+            <form method="POST">
+                <input type="hidden" name="action" value="login">
+                <label>ID</label>
+                <input type="text" name="login_id" required>
+
+                <label>パスワード</label>
+                <input type="password" name="login_password" required>
+
+                <button type="submit">ログイン</button>
+            </form>
+        <?php endif; ?>
+
+        <?php if (!empty($userId) && !$isAdmin): ?>
+            <p style="margin-top:20px;"><a href="index.php?action=logout" style="color:#00e5ff;">ログアウト</a></p>
+        <?php endif; ?>
     </div>
 </body>
 </html>
