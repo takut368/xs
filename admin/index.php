@@ -24,14 +24,16 @@ $adminSuccess = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'create_user') {
-        $newUserId = htmlspecialchars($_POST['new_user_id'], ENT_QUOTES, 'UTF-8');
-        $newUserPassword = htmlspecialchars($_POST['new_user_password'], ENT_QUOTES, 'UTF-8');
+        $newUserId = trim($_POST['new_user_id'] ?? '');
+        $newUserPassword = $_POST['new_user_password'] ?? '';
 
+        // バリデーション
         if (empty($newUserId) || empty($newUserPassword)) {
             $adminErrors[] = 'ユーザーIDとパスワードを入力してください。';
         } elseif (isset($usersData[$newUserId])) {
             $adminErrors[] = '既に存在するユーザーIDです。';
         } else {
+            // ユーザーを追加
             $usersData[$newUserId] = [
                 'password' => $newUserPassword,
                 'force_change' => true
@@ -42,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($_POST['action'] === 'delete_user') {
-        $deleteUserId = htmlspecialchars($_POST['delete_user_id'], ENT_QUOTES, 'UTF-8');
+        $deleteUserId = trim($_POST['delete_user_id'] ?? '');
         if ($deleteUserId === 'admin') {
             $adminErrors[] = '管理者アカウントは削除できません。';
         } elseif (isset($usersData[$deleteUserId])) {
@@ -229,13 +231,13 @@ function getUserLinks($userId, $seiseiData) {
         <?php if (!empty($adminErrors)): ?>
             <div class="error">
                 <?php foreach ($adminErrors as $error): ?>
-                    <p><?php echo $error; ?></p>
+                    <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
         <?php if (!empty($adminSuccess)): ?>
             <div class="success-message">
-                <p><?php echo $adminSuccess; ?></p>
+                <p><?php echo htmlspecialchars($adminSuccess, ENT_QUOTES, 'UTF-8'); ?></p>
             </div>
         <?php endif; ?>
         <form method="POST">
@@ -263,7 +265,7 @@ function getUserLinks($userId, $seiseiData) {
                         <td><?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?></td>
                         <td><?php echo getUserLinkCount($userIdKey, $seiseiFile); ?></td>
                         <td>
-                            <button class="view-links-button" data-user-id="<?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?>">リンクを表示</button>
+                            <button type="button" class="view-links-button" data-user-id="<?php echo htmlspecialchars($userIdKey, ENT_QUOTES, 'UTF-8'); ?>">リンクを表示</button>
                             <?php if ($userIdKey !== 'admin'): ?>
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="action" value="delete_user">
