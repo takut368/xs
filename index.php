@@ -374,7 +374,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>サムネイル付きリンク生成サービス</title>
+    <title>サムネイル付きリンク生成サービス - ログイン</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* リセットCSS */
@@ -760,12 +760,11 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 });
             });
 
-            // 初回ログイン時のIDおよびパスワード変更フォームの表示
+            // 初回ログイン時のIDおよびパスワード変更アラートとフォーム表示
             <?php if (isset($_GET['force_change']) && $_GET['force_change'] == '1'): ?>
                 window.onload = function() {
-                    // alert('初回ログインです。IDとパスワードを変更してください。');
+                    alert('初回ログインです。IDとパスワードを変更してください。');
                     document.getElementById('credentialsChangeSection').style.display = 'block';
-                    document.getElementById('userDashboard').style.display = 'none';
                 };
             <?php endif; ?>
         </script>
@@ -784,7 +783,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
         <?php if ($success): ?>
             <div class="success-message">
                 <p><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?></p>
-                <?php if (strpos($success, '生成') !== false || strpos($success, '更新') !== false): ?>
+                <?php if (isset($generatedLink) && !empty($generatedLink)): ?>
                     <input type="text" id="generatedLink" value="<?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                     <button id="copyButton">コピー</button>
                 <?php endif; ?>
@@ -793,296 +792,295 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
 
         <?php if (isset($_SESSION['user_id']) && !$isAdmin && !isset($_SESSION['force_change'])): ?>
             <!-- ユーザーダッシュボード -->
-            <div id="userDashboard">
-                <form method="POST" action="" enctype="multipart/form-data">
-                    <input type="hidden" name="action" value="generate_link">
-                    <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
-                    <input type="hidden" id="editedImageData" name="editedImageData">
-                    <input type="hidden" id="imageOptionInput" name="imageOption" required>
-                    <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
+            <form method="POST" action="" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="generate_link">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" id="editedImageData" name="editedImageData">
+                <input type="hidden" id="imageOptionInput" name="imageOption" required>
+                <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
 
-                    <label>遷移先URL（必須）</label>
-                    <input type="url" name="linkA" required>
+                <label>遷移先URL（必須）</label>
+                <input type="url" name="linkA" required>
 
-                    <label>タイトル（必須）</label>
-                    <input type="text" name="title" required>
+                <label>タイトル（必須）</label>
+                <input type="text" name="title" required>
 
-                    <label>サムネイル画像の選択方法（必須）</label>
-                    <div class="image-option-buttons">
-                        <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
-                        <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                        <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
-                    </div>
+                <label>サムネイル画像の選択方法（必須）</label>
+                <div class="image-option-buttons">
+                    <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                    <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                    <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
+                </div>
 
-                    <div id="imageUrlInput" style="display:none;">
-                        <label>画像URLを入力</label>
-                        <input type="url" name="imageUrl">
-                    </div>
+                <div id="imageUrlInput" style="display:none;">
+                    <label>画像URLを入力</label>
+                    <input type="url" name="imageUrl">
+                </div>
 
-                    <div id="imageFileInput" style="display:none;">
-                        <label>画像ファイルをアップロード</label>
-                        <input type="file" name="imageFile" accept="image/*">
-                    </div>
+                <div id="imageFileInput" style="display:none;">
+                    <label>画像ファイルをアップロード</label>
+                    <input type="file" name="imageFile" accept="image/*">
+                </div>
 
-                    <!-- テンプレート選択モーダル -->
-                    <div id="templateModal" class="modal">
-                        <div class="modal-content">
-                            <span class="close" id="templateClose">&times;</span>
-                            <h2>テンプレートを選択</h2>
-                            <div class="template-grid">
-                                <?php
-                                $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                                foreach ($templates as $template):
-                                ?>
-                                    <div class="template-item">
-                                        <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                        <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button type="button" id="toggleDetails">詳細設定</button>
-                    <div id="detailsSection" class="details-section">
-                        <label>ページの説明</label>
-                        <textarea name="description"></textarea>
-
-                        <label>Twitterアカウント名（@を含む）</label>
-                        <input type="text" name="twitterSite">
-
-                        <label>画像の代替テキスト</label>
-                        <input type="text" name="imageAlt">
-                    </div>
-
-                    <button type="submit">リンクを生成</button>
-                </form>
-
-                <!-- ユーザーのリンク一覧 -->
-                <h2 style="margin-top: 40px;">あなたの生成したリンク一覧</h2>
-                <?php
-                if (file_exists($seiseiFile)) {
-                    $seiseiData = json_decode(file_get_contents($seiseiFile), true);
-                    if (isset($seiseiData[$userId]) && count($seiseiData[$userId]) > 0) {
-                        echo '<table border="1" cellpadding="10" cellspacing="0" style="width:100%; margin-top:10px;">';
-                        echo '<tr><th>ID</th><th>リンク</th><th>タイトル</th><th>操作</th></tr>';
-                        foreach ($seiseiData[$userId] as $link) {
-                            echo '<tr>';
-                            echo '<td>' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '</td>';
-                            echo '<td><a href="' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '" target="_blank">' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '</a></td>';
-                            echo '<td>' . htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8') . '</td>';
-                            echo '<td><button onclick="editLink(\'' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '\')">編集</button></td>';
-                            echo '</tr>';
-                        }
-                        echo '</table>';
-                    } else {
-                        echo '<p>生成されたリンクはありません。</p>';
-                    }
-                }
-                ?>
-
-                <!-- リンク編集モーダル -->
-                <div id="editModal" class="modal">
+                <!-- テンプレート選択モーダル -->
+                <div id="templateModal" class="modal">
                     <div class="modal-content">
-                        <span class="close" id="editClose">&times;</span>
-                        <h2>リンクを編集</h2>
-                        <form method="POST" enctype="multipart/form-data">
-                            <input type="hidden" name="action" value="edit_link">
-                            <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
-                            <input type="hidden" id="edit_link_id" name="link_id">
-
-                            <label>遷移先URL（必須）</label>
-                            <input type="url" name="new_redirect_url" required>
-
-                            <label>タイトル（必須）</label>
-                            <input type="text" name="new_title" required>
-
-                            <label>サムネイル画像の選択方法（必須）</label>
-                            <div class="image-option-buttons">
-                                <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
-                                <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                                <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
-                            </div>
-
-                            <div id="edit_imageUrlInput" style="display:none;">
-                                <label>画像URLを入力</label>
-                                <input type="url" name="new_imageUrl">
-                            </div>
-
-                            <div id="edit_imageFileInput" style="display:none;">
-                                <label>画像ファイルをアップロード</label>
-                                <input type="file" name="new_imageFile" accept="image/*">
-                            </div>
-
-                            <!-- テンプレート選択モーダル -->
-                            <div id="editTemplateModal" class="modal">
-                                <div class="modal-content">
-                                    <span class="close" id="editTemplateClose">&times;</span>
-                                    <h2>テンプレートを選択</h2>
-                                    <div class="template-grid">
-                                        <?php
-                                        foreach ($templates as $template):
-                                        ?>
-                                            <div class="template-item">
-                                                <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                                <input type="radio" name="new_templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
+                        <span class="close" id="templateClose">&times;</span>
+                        <h2>テンプレートを選択</h2>
+                        <div class="template-grid">
+                            <?php
+                            $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                            foreach ($templates as $template):
+                            ?>
+                                <div class="template-item">
+                                    <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
-                            </div>
-
-                            <label>ページの説明</label>
-                            <textarea name="new_description"></textarea>
-
-                            <label>Twitterアカウント名（@を含む）</label>
-                            <input type="text" name="new_twitterSite">
-
-                            <label>画像の代替テキスト</label>
-                            <input type="text" name="new_imageAlt">
-
-                            <button type="submit">更新</button>
-                        </form>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 </div>
 
-                <script>
-                    // リンク編集モーダルの処理
-                    const editModal = document.getElementById('editModal');
-                    const editClose = document.getElementById('editClose');
-                    const editTemplateModal = document.getElementById('editTemplateModal');
-                    const editTemplateClose = document.getElementById('editTemplateClose');
+                <button type="button" id="toggleDetails">詳細設定</button>
+                <div id="detailsSection" class="details-section">
+                    <label>ページの説明</label>
+                    <textarea name="description"></textarea>
 
-                    function editLink(linkId) {
-                        document.getElementById('edit_link_id').value = linkId;
-                        editModal.style.display = 'block';
+                    <label>Twitterアカウント名（@を含む）</label>
+                    <input type="text" name="twitterSite">
+
+                    <label>画像の代替テキスト</label>
+                    <input type="text" name="imageAlt">
+                </div>
+
+                <button type="submit">リンクを生成</button>
+            </form>
+
+            <!-- ユーザーのリンク一覧 -->
+            <h2 style="margin-top: 40px;">あなたの生成したリンク一覧</h2>
+            <?php
+            if (file_exists($seiseiFile)) {
+                $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+                if (isset($seiseiData[$userId]) && count($seiseiData[$userId]) > 0) {
+                    echo '<table border="1" cellpadding="10" cellspacing="0" style="width:100%; margin-top:10px;">';
+                    echo '<tr><th>ID</th><th>リンク</th><th>タイトル</th><th>操作</th></tr>';
+                    foreach ($seiseiData[$userId] as $link) {
+                        echo '<tr>';
+                        echo '<td>' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '</td>';
+                        echo '<td><a href="' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '" target="_blank">' . htmlspecialchars($link['link'], ENT_QUOTES, 'UTF-8') . '</a></td>';
+                        echo '<td>' . htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8') . '</td>';
+                        echo '<td><button type="button" onclick="editLink(\'' . htmlspecialchars($link['id'], ENT_QUOTES, 'UTF-8') . '\')">編集</button></td>';
+                        echo '</tr>';
                     }
+                    echo '</table>';
+                } else {
+                    echo '<p>生成されたリンクはありません。</p>';
+                }
+            }
+            ?>
 
-                    editClose.addEventListener('click', function() {
-                        editModal.style.display = 'none';
-                    });
+            <!-- リンク編集モーダル -->
+            <div id="editModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" id="editClose">&times;</span>
+                    <h2>リンクを編集</h2>
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="edit_link">
+                        <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" id="edit_link_id" name="link_id">
 
-                    editTemplateClose.addEventListener('click', function() {
-                        editTemplateModal.style.display = 'none';
-                    });
+                        <label>遷移先URL（必須）</label>
+                        <input type="url" name="new_redirect_url" required>
 
-                    window.addEventListener('click', function(event) {
-                        if (event.target == editModal) {
-                            editModal.style.display = 'none';
-                        }
-                        if (event.target == editTemplateModal) {
-                            editTemplateModal.style.display = 'none';
-                        }
-                    });
+                        <label>タイトル（必須）</label>
+                        <input type="text" name="new_title" required>
 
-                    const editTemplateItems = editTemplateModal.querySelectorAll('.template-item');
-                    editTemplateItems.forEach(item => {
-                        item.addEventListener('click', function() {
-                            const radio = this.querySelector('input[type="radio"]');
-                            radio.checked = true;
-                            editTemplateModal.style.display = 'none';
-                            // プレビュー表示
-                            let preview = document.getElementById('edit_imagePreview');
-                            if (!preview) {
-                                preview = document.createElement('img');
-                                preview.id = 'edit_imagePreview';
-                                preview.classList.add('preview-image');
-                                editModal.querySelector('.modal-content').appendChild(preview);
-                            }
-                            preview.src = this.querySelector('img').src;
-                            // サーバーに送信するselectedTemplateの値を設定
-                            document.getElementById('new_selectedTemplate').value = radio.value;
-                        });
-                    });
+                        <label>サムネイル画像の選択方法（必須）</label>
+                        <div class="image-option-buttons">
+                            <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                            <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                            <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
+                        </div>
 
-                    // 編集フォームの画像選択方法のボタン処理
-                    const editImageOptionButtons = editModal.querySelectorAll('.image-option-button');
-                    editImageOptionButtons.forEach(button => {
-                        button.addEventListener('click', function() {
-                            // クラスの切り替え
-                            editImageOptionButtons.forEach(btn => btn.classList.remove('active'));
-                            this.classList.add('active');
+                        <div id="edit_imageUrlInput" style="display:none;">
+                            <label>画像URLを入力</label>
+                            <input type="url" name="new_imageUrl">
+                        </div>
 
-                            const selectedOption = this.dataset.option;
-                            document.getElementById('new_imageOption').value = selectedOption;
+                        <div id="edit_imageFileInput" style="display:none;">
+                            <label>画像ファイルをアップロード</label>
+                            <input type="file" name="new_imageFile" accept="image/*">
+                        </div>
 
-                            // 各オプションの表示・非表示
-                            document.getElementById('edit_imageUrlInput').style.display = 'none';
-                            document.getElementById('edit_imageFileInput').style.display = 'none';
+                        <!-- テンプレート選択モーダル -->
+                        <div id="editTemplateModal" class="modal">
+                            <div class="modal-content">
+                                <span class="close" id="editTemplateClose">&times;</span>
+                                <h2>テンプレートを選択</h2>
+                                <div class="template-grid">
+                                    <?php
+                                    foreach ($templates as $template):
+                                    ?>
+                                        <div class="template-item">
+                                            <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="radio" name="new_templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
 
-                            if (selectedOption === 'url') {
-                                document.getElementById('edit_imageUrlInput').style.display = 'block';
-                            } else if (selectedOption === 'upload') {
-                                document.getElementById('edit_imageFileInput').style.display = 'block';
-                            } else if (selectedOption === 'template') {
-                                // テンプレート選択モーダルを表示
-                                editTemplateModal.style.display = 'block';
-                            }
-                        });
-                    });
+                        <label>ページの説明</label>
+                        <textarea name="new_description"></textarea>
 
-                    // 編集フォームの画像プレビューと切り抜き処理
-                    const editImageFileInput = editModal.querySelector('input[name="new_imageFile"]');
-                    if (editImageFileInput) {
-                        editImageFileInput.addEventListener('change', function() {
-                            const file = this.files[0];
-                            if (file) {
-                                const reader = new FileReader();
-                                reader.onload = function(e) {
-                                    loadEditImageAndCrop(e.target.result);
-                                };
-                                reader.readAsDataURL(file);
-                            }
-                        });
-                    }
+                        <label>Twitterアカウント名（@を含む）</label>
+                        <input type="text" name="new_twitterSite">
 
-                    const editImageUrlInput = editModal.querySelector('input[name="new_imageUrl"]');
-                    if (editImageUrlInput) {
-                        editImageUrlInput.addEventListener('blur', function() {
-                            const url = this.value;
-                            if (url) {
-                                loadEditImageAndCrop(url, true);
-                            }
-                        });
-                    }
+                        <label>画像の代替テキスト</label>
+                        <input type="text" name="new_imageAlt">
 
-                    function loadEditImageAndCrop(source, isUrl = false) {
-                        const img = new Image();
-                        img.crossOrigin = "Anonymous"; // CORS対策
-                        img.onload = function() {
-                            // 2:1に切り抜き
-                            const canvas = document.createElement('canvas');
-                            const desiredWidth = img.width;
-                            const desiredHeight = img.width / 2; // アスペクト比2:1
-                            canvas.width = desiredWidth;
-                            canvas.height = desiredHeight;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
-                            const dataURL = canvas.toDataURL('image/png');
-                            // プレビュー表示
-                            let preview = document.getElementById('edit_imagePreview');
-                            if (!preview) {
-                                preview = document.createElement('img');
-                                preview.id = 'edit_imagePreview';
-                                preview.classList.add('preview-image');
-                                editModal.querySelector('.modal-content').appendChild(preview);
-                            }
-                            preview.src = dataURL;
-                            // editedImageDataにセット
-                            document.getElementById('new_editedImageData').value = dataURL;
-                        };
-                        img.onerror = function() {
-                            alert('画像を読み込めませんでした。');
-                        };
-                        if (isUrl) {
-                            img.src = source;
-                        } else {
-                            img.src = source;
-                        }
-                    }
-                </script>
-
+                        <button type="submit">更新</button>
+                    </form>
+                </div>
             </div>
+
+            <script>
+                // リンク編集モーダルの処理
+                const editModal = document.getElementById('editModal');
+                const editClose = document.getElementById('editClose');
+                const editTemplateModal = document.getElementById('editTemplateModal');
+                const editTemplateClose = document.getElementById('editTemplateClose');
+
+                function editLink(linkId) {
+                    document.getElementById('edit_link_id').value = linkId;
+                    editModal.style.display = 'block';
+                }
+
+                editClose.addEventListener('click', function() {
+                    editModal.style.display = 'none';
+                });
+
+                editTemplateClose.addEventListener('click', function() {
+                    editTemplateModal.style.display = 'none';
+                });
+
+                window.addEventListener('click', function(event) {
+                    if (event.target == editModal) {
+                        editModal.style.display = 'none';
+                    }
+                    if (event.target == editTemplateModal) {
+                        editTemplateModal.style.display = 'none';
+                    }
+                });
+
+                const editTemplateItems = editTemplateModal.querySelectorAll('.template-item');
+                editTemplateItems.forEach(item => {
+                    item.addEventListener('click', function() {
+                        const radio = this.querySelector('input[type="radio"]');
+                        radio.checked = true;
+                        editTemplateModal.style.display = 'none';
+                        // プレビュー表示
+                        let preview = document.getElementById('edit_imagePreview');
+                        if (!preview) {
+                            preview = document.createElement('img');
+                            preview.id = 'edit_imagePreview';
+                            preview.classList.add('preview-image');
+                            editModal.querySelector('.modal-content').appendChild(preview);
+                        }
+                        preview.src = this.querySelector('img').src;
+                        // サーバーに送信するselectedTemplateの値を設定
+                        document.getElementById('new_selectedTemplate').value = radio.value;
+                    });
+                });
+
+                // 編集フォームの画像選択方法のボタン処理
+                const editImageOptionButtons = editModal.querySelectorAll('.image-option-button');
+                editImageOptionButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        // クラスの切り替え
+                        editImageOptionButtons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+
+                        const selectedOption = this.dataset.option;
+                        document.getElementById('new_imageOption').value = selectedOption;
+
+                        // 各オプションの表示・非表示
+                        document.getElementById('edit_imageUrlInput').style.display = 'none';
+                        document.getElementById('edit_imageFileInput').style.display = 'none';
+                        document.getElementById('new_selectedTemplate').value = '';
+
+                        if (selectedOption === 'url') {
+                            document.getElementById('edit_imageUrlInput').style.display = 'block';
+                        } else if (selectedOption === 'upload') {
+                            document.getElementById('edit_imageFileInput').style.display = 'block';
+                        } else if (selectedOption === 'template') {
+                            // テンプレート選択モーダルを表示
+                            editTemplateModal.style.display = 'block';
+                        }
+                    });
+                });
+
+                // 編集フォームの画像プレビューと切り抜き処理
+                const editImageFileInput = editModal.querySelector('input[name="new_imageFile"]');
+                if (editImageFileInput) {
+                    editImageFileInput.addEventListener('change', function() {
+                        const file = this.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                loadEditImageAndCrop(e.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                }
+
+                const editImageUrlInput = editModal.querySelector('input[name="new_imageUrl"]');
+                if (editImageUrlInput) {
+                    editImageUrlInput.addEventListener('blur', function() {
+                        const url = this.value;
+                        if (url) {
+                            loadEditImageAndCrop(url, true);
+                        }
+                    });
+                }
+
+                function loadEditImageAndCrop(source, isUrl = false) {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous"; // CORS対策
+                    img.onload = function() {
+                        // 2:1に切り抜き
+                        const canvas = document.createElement('canvas');
+                        const desiredWidth = img.width;
+                        const desiredHeight = img.width / 2; // アスペクト比2:1
+                        canvas.width = desiredWidth;
+                        canvas.height = desiredHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
+                        const dataURL = canvas.toDataURL('image/png');
+                        // プレビュー表示
+                        let preview = document.getElementById('edit_imagePreview');
+                        if (!preview) {
+                            preview = document.createElement('img');
+                            preview.id = 'edit_imagePreview';
+                            preview.classList.add('preview-image');
+                            editModal.querySelector('.modal-content').appendChild(preview);
+                        }
+                        preview.src = dataURL;
+                        // editedImageDataにセット
+                        document.getElementById('new_editedImageData').value = dataURL;
+                    };
+                    img.onerror = function() {
+                        alert('画像を読み込めませんでした。');
+                    };
+                    if (isUrl) {
+                        img.src = source;
+                    } else {
+                        img.src = source;
+                    }
+                }
+            </script>
+
         <?php elseif (isset($_SESSION['user_id']) && isset($_SESSION['force_change']) && !$isAdmin): ?>
             <!-- IDおよびパスワード変更フォーム -->
             <div id="credentialsChangeSection" style="display:none;">
