@@ -73,31 +73,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// パスワード変更処理
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
-    if (isset($_SESSION['user_id']) && isset($_SESSION['force_change'])) {
-        $newPassword = $_POST['new_password'] ?? '';
-        $confirmPassword = $_POST['confirm_password'] ?? '';
+// パスワードおよびID変更処理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_credentials') {
+    if (isset($_SESSION['user_id']) && isset($_SESSION['force_change']) && !$isAdmin) {
+        $newUserId = htmlspecialchars($_POST['new_user_id'], ENT_QUOTES, 'UTF-8');
+        $newPassword = htmlspecialchars($_POST['new_password'], ENT_QUOTES, 'UTF-8');
+        $confirmPassword = htmlspecialchars($_POST['confirm_password'], ENT_QUOTES, 'UTF-8');
 
-        if (empty($newPassword) || empty($confirmPassword)) {
-            $errors[] = '新しいパスワードを入力してください。';
+        // バリデーション
+        if (empty($newUserId) || empty($newPassword) || empty($confirmPassword)) {
+            $errors[] = '全てのフィールドを入力してください。';
         } elseif ($newPassword !== $confirmPassword) {
             $errors[] = 'パスワードが一致しません。';
+        } elseif ($newUserId !== $_SESSION['user_id'] && isset($usersData[$newUserId])) {
+            $errors[] = '新しいユーザーIDが既に存在します。';
         } else {
             // ユーザー情報を更新
             if (file_exists($usersFile)) {
                 $usersData = json_decode(file_get_contents($usersFile), true);
-                $usersData[$_SESSION['user_id']]['password'] = $newPassword;
-                $usersData[$_SESSION['user_id']]['force_change'] = false;
+                $oldUserId = $_SESSION['user_id'];
+                // IDを変更する場合
+                if ($newUserId !== $oldUserId) {
+                    $usersData[$newUserId] = $usersData[$oldUserId];
+                    unset($usersData[$oldUserId]);
+                    // seisei.json内のキーも変更
+                    if (file_exists($seiseiFile)) {
+                        $seiseiData = json_decode(file_get_contents($seiseiFile), true);
+                        if (isset($seiseiData[$oldUserId])) {
+                            $seiseiData[$newUserId] = $seiseiData[$oldUserId];
+                            unset($seiseiData[$oldUserId]);
+                            file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
+                        }
+                    }
+                }
+                // パスワードを更新
+                $usersData[$newUserId]['password'] = $newPassword;
+                $usersData[$newUserId]['force_change'] = false;
                 file_put_contents($usersFile, json_encode($usersData, JSON_PRETTY_PRINT));
+
+                // セッションとクッキーを更新
+                $_SESSION['user_id'] = $newUserId;
+                setcookie('user_id', $newUserId, $cookieExpire, "/");
                 unset($_SESSION['force_change']);
-                $success = 'パスワードが変更されました。';
+                $success = 'IDとパスワードが変更されました。';
             } else {
                 $errors[] = 'ユーザーデータが存在しません。';
             }
         }
     } else {
-        $errors[] = 'パスワード変更の権限がありません。';
+        $errors[] = '認証が必要です。';
     }
 }
 
@@ -152,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if (!in_array($selectedTemplate, $templateImages)) {
                     $errors[] = '有効なテンプレート画像を選択してください。';
                 } else {
-                    $imagePath = '../temp/' . $selectedTemplate;
+                    $imagePath = 'temp/' . $selectedTemplate;
                 }
             }
 
@@ -177,6 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $htmlContent = generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath);
                     file_put_contents($filePath, $htmlContent);
                     $generatedLink = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $uniqueId;
+                    $success = 'リンクが生成されました。';
 
                     // seisei.jsonに記録
                     if (!file_exists($seiseiFile)) {
@@ -198,8 +223,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         'created_at' => date('Y-m-d H:i:s')
                     ];
                     file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT));
-
-                    $success = 'リンクが生成されました。';
                 }
             }
         }
@@ -244,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             if (!in_array($newSelectedTemplate, $templateImages)) {
                                 $errors[] = '有効なテンプレート画像を選択してください。';
                             } else {
-                                $link['image_path'] = '../temp/' . $newSelectedTemplate;
+                                $link['image_path'] = 'temp/' . $newSelectedTemplate;
                             }
                         }
 
@@ -277,7 +300,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// ログインフォームまたはユーザーダッシュボードの表示
+// 画像保存関数
+function saveImage($imageData)
+{
+    $imageName = uniqid() . '.png';
+    $imagePath = 'uploads/' . $imageName;
+    file_put_contents($imagePath, $imageData);
+    return $imagePath;
+}
+
+// HTMLコンテンツ生成関数
+function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath)
+{
+    $imageUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $imagePath;
+    $metaDescription = !empty($description) ? $description : $title;
+    $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . $twitterSite . '">' : '';
+    $imageAltTag = !empty($imageAlt) ? $imageAlt : $title;
+
+    $html = '<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>' . $title . '</title>
+    <meta name="description" content="' . $metaDescription . '">
+    <meta http-equiv="refresh" content="0; URL=' . htmlspecialchars($linkA, ENT_QUOTES, 'UTF-8') . '">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    ' . $twitterSiteTag . '
+    <meta name="twitter:title" content="' . $title . '">
+    <meta name="twitter:description" content="' . $metaDescription . '">
+    <meta name="twitter:image" content="' . $imageUrl . '">
+    <meta name="twitter:image:alt" content="' . $imageAltTag . '">
+</head>
+<body>
+    <p>リダイレクト中...</p>
+</body>
+</html>';
+
+    return $html;
+}
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -305,7 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             padding: 20px;
             animation: fadeIn 1s ease-in-out;
         }
-        h1 {
+        h1, h2 {
             text-align: center;
             margin-bottom: 20px;
         }
@@ -350,6 +411,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
         button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
+            transform: scale(1.02);
+        }
+        .logout-button {
+            background: linear-gradient(to right, #ff5252, #ff1744);
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            padding: 10px;
+            margin-top: 20px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .logout-button:hover {
+            background: linear-gradient(to right, #ff1744, #ff5252);
             transform: scale(1.02);
         }
         .error {
@@ -546,7 +626,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             const detailsButton = document.getElementById('toggleDetails');
             const detailsSection = document.getElementById('detailsSection');
             detailsButton.addEventListener('click', function() {
-                if (detailsSection.style.display === 'none') {
+                if (detailsSection.style.display === 'none' || detailsSection.style.display === '') {
                     detailsSection.style.display = 'block';
                 } else {
                     detailsSection.style.display = 'none';
@@ -661,11 +741,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 });
             });
 
-            // 初回ログイン時のパスワード変更
+            // 初回ログイン時のパスワード変更アラート
             <?php if (isset($_GET['force_change']) && $_GET['force_change'] == '1'): ?>
-                alert('初回ログインです。パスワードを変更してください。');
-                // 自動的にパスワード変更セクションを表示
-                document.getElementById('passwordChangeSection').style.display = 'block';
+                window.onload = function() {
+                    alert('初回ログインです。IDとパスワードを変更してください。');
+                    document.getElementById('credentialsChangeSection').style.display = 'block';
+                };
             <?php endif; ?>
         </script>
 </head>
@@ -682,18 +763,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         <?php if ($success): ?>
             <div class="success-message">
-                <p>リンクが生成されました：</p>
-                <input type="text" id="generatedLink" value="<?php echo $generatedLink; ?>" readonly>
-                <button id="copyButton">コピー</button>
-                <p>保存しない場合、再度登録が必要です。</p>
+                <p><?php echo $success; ?></p>
             </div>
         <?php endif; ?>
 
-        <?php if (isset($_SESSION['user_id']) && !$isAdmin): ?>
+        <?php if (isset($_SESSION['user_id']) && !$isAdmin && !isset($_SESSION['force_change'])): ?>
             <!-- ユーザーダッシュボード -->
-            <form method="POST">
+            <form method="POST" action="" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="generate_link">
                 <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                <input type="hidden" id="editedImageData" name="editedImageData">
+                <input type="hidden" id="imageOptionInput" name="imageOption" required>
+                <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
 
                 <label>遷移先URL（必須）</label>
                 <input type="url" name="linkA" required>
@@ -705,8 +786,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
                     <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                </div>
-                <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
                 </div>
 
@@ -782,7 +861,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <div class="modal-content">
                     <span class="close" id="editClose">&times;</span>
                     <h2>リンクを編集</h2>
-                    <form method="POST">
+                    <form method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="action" value="edit_link">
                         <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
                         <input type="hidden" id="edit_link_id" name="link_id">
@@ -797,8 +876,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <div class="image-option-buttons">
                             <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
                             <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                        </div>
-                        <div class="image-option-buttons">
                             <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
                         </div>
 
@@ -822,7 +899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     foreach ($templates as $template):
                                     ?>
                                         <div class="template-item">
-                                            <img src="../temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                                            <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
                                             <input type="radio" name="new_templateRadio" value="<?php echo $template; ?>">
                                         </div>
                                     <?php endforeach; ?>
@@ -860,6 +937,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     editModal.style.display = 'none';
                 });
 
+                editTemplateClose.addEventListener('click', function() {
+                    editTemplateModal.style.display = 'none';
+                });
+
                 window.addEventListener('click', function(event) {
                     if (event.target == editModal) {
                         editModal.style.display = 'none';
@@ -867,41 +948,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     if (event.target == editTemplateModal) {
                         editTemplateModal.style.display = 'none';
                     }
-                });
-
-                // 編集リンクの画像選択ボタン処理
-                const editImageOptionButtons = editModal.querySelectorAll('.image-option-button');
-                editImageOptionButtons.forEach(button => {
-                    button.addEventListener('click', function() {
-                        // クラスの切り替え
-                        editImageOptionButtons.forEach(btn => btn.classList.remove('active'));
-                        this.classList.add('active');
-
-                        const selectedOption = this.dataset.option;
-                        document.getElementById('edit_imageOptionInput').value = selectedOption;
-
-                        // 各オプションの表示・非表示
-                        document.getElementById('edit_imageUrlInput').style.display = 'none';
-                        document.getElementById('edit_imageFileInput').style.display = 'none';
-
-                        if (selectedOption === 'url') {
-                            document.getElementById('edit_imageUrlInput').style.display = 'block';
-                        } else if (selectedOption === 'upload') {
-                            document.getElementById('edit_imageFileInput').style.display = 'block';
-                        } else if (selectedOption === 'template') {
-                            // テンプレート選択モーダルを表示
-                            openEditTemplateModal();
-                        }
-                    });
-                });
-
-                // 編集リンクのテンプレート選択モーダルの処理
-                function openEditTemplateModal() {
-                    editTemplateModal.style.display = 'block';
-                }
-
-                editTemplateClose.addEventListener('click', function() {
-                    editTemplateModal.style.display = 'none';
                 });
 
                 const editTemplateItems = editTemplateModal.querySelectorAll('.template-item');
@@ -923,24 +969,115 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         document.getElementById('new_selectedTemplate').value = radio.value;
                     });
                 });
+
+                // 編集フォームの画像選択方法のボタン処理
+                const editImageOptionButtons = editModal.querySelectorAll('.image-option-button');
+                editImageOptionButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        // クラスの切り替え
+                        editImageOptionButtons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+
+                        const selectedOption = this.dataset.option;
+                        document.getElementById('new_imageOption').value = selectedOption;
+
+                        // 各オプションの表示・非表示
+                        document.getElementById('edit_imageUrlInput').style.display = 'none';
+                        document.getElementById('edit_imageFileInput').style.display = 'none';
+
+                        if (selectedOption === 'url') {
+                            document.getElementById('edit_imageUrlInput').style.display = 'block';
+                        } else if (selectedOption === 'upload') {
+                            document.getElementById('edit_imageFileInput').style.display = 'block';
+                        } else if (selectedOption === 'template') {
+                            // テンプレート選択モーダルを表示
+                            editTemplateModal.style.display = 'block';
+                        }
+                    });
+                });
+
+                // リンク編集時の画像プレビューと切り抜き処理
+                const editImageFileInput = editModal.querySelector('input[name="new_imageFile"]');
+                if (editImageFileInput) {
+                    editImageFileInput.addEventListener('change', function() {
+                        const file = this.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                loadEditImageAndCrop(e.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                }
+
+                const editImageUrlInput = editModal.querySelector('input[name="new_imageUrl"]');
+                if (editImageUrlInput) {
+                    editImageUrlInput.addEventListener('blur', function() {
+                        const url = this.value;
+                        if (url) {
+                            loadEditImageAndCrop(url, true);
+                        }
+                    });
+                }
+
+                function loadEditImageAndCrop(source, isUrl = false) {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous"; // CORS対策
+                    img.onload = function() {
+                        // 2:1に切り抜き
+                        const canvas = document.createElement('canvas');
+                        const desiredWidth = img.width;
+                        const desiredHeight = img.width / 2; // アスペクト比2:1
+                        canvas.width = desiredWidth;
+                        canvas.height = desiredHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
+                        const dataURL = canvas.toDataURL('image/png');
+                        // プレビュー表示
+                        let preview = document.getElementById('edit_imagePreview');
+                        if (!preview) {
+                            preview = document.createElement('img');
+                            preview.id = 'edit_imagePreview';
+                            preview.classList.add('preview-image');
+                            editModal.querySelector('.modal-content').appendChild(preview);
+                        }
+                        preview.src = dataURL;
+                        // editedImageDataにセット
+                        document.getElementById('new_editedImageData').value = dataURL;
+                    };
+                    img.onerror = function() {
+                        alert('画像を読み込めませんでした。');
+                    };
+                    if (isUrl) {
+                        img.src = source;
+                    } else {
+                        img.src = source;
+                    }
+                }
             </script>
 
         <?php elseif (isset($_SESSION['user_id']) && isset($_SESSION['force_change']) && !$isAdmin): ?>
-            <!-- パスワード変更フォーム -->
-            <form method="POST">
-                <input type="hidden" name="action" value="change_password">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+            <!-- IDおよびパスワード変更フォーム -->
+            <div id="credentialsChangeSection" style="display:none;">
+                <form method="POST">
+                    <input type="hidden" name="action" value="change_credentials">
+                    <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
 
-                <h2>パスワードの変更</h2>
+                    <h2>IDおよびパスワードの変更</h2>
 
-                <label>新しいパスワード</label>
-                <input type="password" name="new_password" required>
+                    <label>新しいユーザーID</label>
+                    <input type="text" name="new_user_id" required>
 
-                <label>新しいパスワード（確認）</label>
-                <input type="password" name="confirm_password" required>
+                    <label>新しいパスワード</label>
+                    <input type="password" name="new_password" required>
 
-                <button type="submit">変更</button>
-            </form>
+                    <label>新しいパスワード（確認）</label>
+                    <input type="password" name="confirm_password" required>
+
+                    <button type="submit">変更</button>
+                </form>
+            </div>
         <?php else: ?>
             <!-- ログインフォーム -->
             <form method="POST">
@@ -955,8 +1092,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </form>
         <?php endif; ?>
 
-        <?php if (!empty($userId) && !$isAdmin): ?>
-            <p style="margin-top:20px;"><a href="index.php?action=logout" style="color:#00e5ff;">ログアウト</a></p>
+        <?php if (!empty($userId) && !$isAdmin && !isset($_SESSION['force_change'])): ?>
+            <!-- スタイルを適用したログアウトボタン -->
+            <a href="index.php?action=logout" class="logout-button">ログアウト</a>
         <?php endif; ?>
     </div>
 </body>
