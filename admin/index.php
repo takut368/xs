@@ -2,6 +2,12 @@
 // セッションの開始
 session_start();
 
+// クエリパラメータのチェック
+if (!isset($_GET['id']) || $_GET['id'] !== '123') {
+    // 画面を真っ白にして何も表示しない
+    exit;
+}
+
 // CSRFトークンの生成
 if (empty($_SESSION['admin_token'])) {
     $_SESSION['admin_token'] = bin2hex(random_bytes(32));
@@ -16,7 +22,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'logout') {
     session_unset();
     session_destroy();
     setcookie("loggedin_admin", "", time() - 3600, "/");
-    header("Location: index.php?id=123");
+    header("Location: ../index.php?id=123");
     exit;
 }
 
@@ -32,7 +38,7 @@ if (!isset($_SESSION['admin_loggedin'])) {
             if ($admin_username === 'admin' && $admin_password === 'admin') {
                 $_SESSION['admin_loggedin'] = true;
                 setcookie("loggedin_admin", true, time() + (86400 * 30), "/"); // 30日間有効
-                header("Location: admin/index.php");
+                header("Location: admin/index.php?id=123");
                 exit;
             } else {
                 $errors[] = '管理者IDまたはパスワードが間違っています。';
@@ -186,7 +192,11 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
                 $errors[] = 'ユーザーIDとパスワードを入力してください。';
             } else {
                 // users.jsonの読み込み
-                $users = json_decode(file_get_contents('../users.json'), true);
+                if (!file_exists('../users.json')) {
+                    $users = [];
+                } else {
+                    $users = json_decode(file_get_contents('../users.json'), true);
+                }
                 // ユーザーIDの重複チェック
                 $duplicate = false;
                 foreach ($users as $user) {
@@ -213,8 +223,16 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
     }
 
     // ユーザーのリンク数の取得
-    $users = json_decode(file_get_contents('../users.json'), true);
-    $links = json_decode(file_get_contents('../seisei.json'), true);
+    if (!file_exists('../users.json')) {
+        $users = [];
+    } else {
+        $users = json_decode(file_get_contents('../users.json'), true);
+    }
+    if (!file_exists('../seisei.json')) {
+        $links = [];
+    } else {
+        $links = json_decode(file_get_contents('../seisei.json'), true);
+    }
     $user_link_counts = [];
     foreach ($users as $user) {
         $count = 0;
@@ -363,7 +381,24 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
             tr:hover {
                 background-color: #333;
             }
-            /* ユーザーリンク詳細テーブル */
+            /* 編集フォーム */
+            .edit-form {
+                margin-top: 20px;
+                padding: 15px;
+                background-color: #1e1e1e;
+                border-radius: 10px;
+                animation: fadeIn 0.5s;
+            }
+            /* ログアウトボタン */
+            .logout-button {
+                background: #ff5252;
+                color: #ffffff;
+            }
+            .logout-button:hover {
+                background: #ff1744;
+                transform: scale(1.02);
+            }
+            /* リンク一覧テーブル */
             .user-links-table {
                 width: 100%;
                 border-collapse: collapse;
@@ -380,14 +415,19 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
             .user-links-table tr:hover {
                 background-color: #333;
             }
-            /* 管理者ログアウトボタン */
-            .logout-button {
-                background: #ff5252;
-                color: #ffffff;
+            /* 編集ボタン */
+            .edit-button {
+                background: #00e5ff;
+                color: #000;
+                border: none;
+                border-radius: 5px;
+                padding: 5px 10px;
+                cursor: pointer;
+                transition: transform 0.2s, background 0.2s;
             }
-            .logout-button:hover {
-                background: #ff1744;
-                transform: scale(1.02);
+            .edit-button:hover {
+                background: #00b0ff;
+                transform: scale(1.05);
             }
         </style>
     </head>
@@ -410,6 +450,7 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
             <!-- 管理者ログアウトボタン -->
             <form method="POST" style="text-align: right;">
                 <input type="hidden" name="action" value="logout">
+                <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
                 <button type="submit" class="logout-button">ログアウト</button>
             </form>
 
@@ -421,7 +462,7 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
                 <label>ユーザーID</label>
                 <input type="text" name="new_user_id" required>
                 <label>パスワード</label>
-                <input type="text" name="new_user_password" required>
+                <input type="password" name="new_user_password" required>
                 <button type="submit">ユーザーを作成</button>
             </form>
 
@@ -441,7 +482,7 @@ if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true) 
                             <tr>
                                 <td><?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td><?php echo isset($user_link_counts[$user['id']]) ? $user_link_counts[$user['id']] : 0; ?></td>
-                                <td><a href="index.php?id=123&view_user=<?php echo urlencode($user['id']); ?>">詳細を見る</a></td>
+                                <td><a href="index.php?id=123&view_user=<?php echo urlencode($user['id']); ?>" class="edit-button">詳細を見る</a></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
