@@ -68,29 +68,33 @@ if (isset($_POST['action']) && $_POST['action'] === 'login') {
 
         if ($username === 'admin' && $password === 'admin') {
             // 管理者ログイン
-            $_SESSION['admin'] = true;
+            $_SESSION['admin_loggedin'] = true;
             setcookie("loggedin_admin", true, time() + (86400 * 30), "/"); // 30日間有効
-            header("Location: admin/index.php");
+            header("Location: admin/index.php?id=123");
             exit;
         } else {
             // ユーザーログイン
-            $users = json_decode(file_get_contents('users.json'), true);
-            $user_found = false;
-            foreach ($users as $user) {
-                if ($user['id'] === $username && $user['password'] === $password) {
-                    $user_found = true;
-                    $_SESSION['user_id'] = $username;
-                    setcookie("loggedin", true, time() + (86400 * 30), "/"); // 30日間有効
-                    if ($user['first_login']) {
-                        // 初回ログイン時はパスワード変更フォームへ
-                        header("Location: index.php?id=123&action=change_password");
-                        exit;
+            if (!file_exists('users.json')) {
+                $errors[] = 'ユーザーデータが存在しません。';
+            } else {
+                $users = json_decode(file_get_contents('users.json'), true);
+                $user_found = false;
+                foreach ($users as $user) {
+                    if ($user['id'] === $username && $user['password'] === $password) {
+                        $user_found = true;
+                        $_SESSION['user_id'] = $username;
+                        setcookie("loggedin", true, time() + (86400 * 30), "/"); // 30日間有効
+                        if ($user['first_login']) {
+                            // 初回ログイン時はパスワード変更フォームへ
+                            header("Location: index.php?id=123&action=change_password");
+                            exit;
+                        }
+                        break;
                     }
-                    break;
                 }
-            }
-            if (!$user_found) {
-                $errors[] = 'ユーザーIDまたはパスワードが間違っています。';
+                if (!$user_found) {
+                    $errors[] = 'ユーザーIDまたはパスワードが間違っています。';
+                }
             }
         }
     }
@@ -112,12 +116,115 @@ if (isset($_GET['action']) && $_GET['action'] === 'change_password') {
         <title>パスワード変更</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            /* スタイルは後述 */
-            /* ... */
+            /* スタイルをここに記述 */
+            /* リセットCSS */
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            /* 共通スタイル */
+            body {
+                background-color: #121212;
+                color: #ffffff;
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                animation: fadeIn 1s ease-in-out;
+            }
+            .change-password-container {
+                background-color: #1e1e1e;
+                padding: 30px;
+                border-radius: 10px;
+                width: 90%;
+                max-width: 400px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                animation: scaleUp 0.5s ease-in-out;
+            }
+            h1 {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            label {
+                display: block;
+                margin-top: 15px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            input[type="text"],
+            input[type="password"] {
+                width: 100%;
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: none;
+                border-radius: 5px;
+                font-size: 16px;
+                padding: 10px;
+                margin-top: 5px;
+                transition: background-color 0.3s;
+            }
+            input[type="text"]:focus,
+            input[type="password"]:focus {
+                background-color: #3a3a3a;
+                outline: none;
+            }
+            button {
+                background: linear-gradient(to right, #00e5ff, #00b0ff);
+                color: #000;
+                border: none;
+                border-radius: 5px;
+                font-size: 16px;
+                padding: 15px;
+                margin-top: 20px;
+                cursor: pointer;
+                width: 100%;
+                transition: transform 0.2s;
+            }
+            button:hover {
+                background: linear-gradient(to right, #00b0ff, #00e5ff);
+                transform: scale(1.02);
+            }
+            .error {
+                color: #ff5252;
+                font-size: 14px;
+                animation: shake 0.5s;
+                margin-top: 10px;
+                text-align: center;
+            }
+            .success-message {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border-radius: 10px;
+                padding: 15px;
+                margin-top: 20px;
+                animation: fadeInUp 0.5s;
+            }
+            /* アニメーション */
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes scaleUp {
+                from { transform: scale(0.8); }
+                to { transform: scale(1); }
+            }
+            @keyframes shake {
+                0% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                50% { transform: translateX(5px); }
+                75% { transform: translateX(-5px); }
+                100% { transform: translateX(0); }
+            }
+            @keyframes fadeInUp {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
         </style>
     </head>
     <body>
-        <div class="container">
+        <div class="change-password-container">
             <h1>パスワード変更</h1>
             <?php if (!empty($errors)): ?>
                 <div class="error">
@@ -128,8 +235,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'change_password') {
             <?php endif; ?>
             <?php if ($success): ?>
                 <div class="success-message">
-                    <p>パスワードが正常に変更されました。</p>
-                    <a href="index.php?id=123">ダッシュボードへ戻る</a>
+                    <p>IDとパスワードが正常に変更されました。</p>
+                    <a href="index.php?id=123" style="color: #00e5ff; text-decoration: none;">ダッシュボードへ戻る</a>
                 </div>
             <?php else: ?>
                 <form method="POST">
@@ -138,7 +245,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'change_password') {
                     <label>新しいユーザーID</label>
                     <input type="text" name="new_id" required>
                     <label>新しいパスワード</label>
-                    <input type="text" name="new_password" required>
+                    <input type="password" name="new_password" required>
                     <button type="submit">変更</button>
                 </form>
             <?php endif; ?>
@@ -154,7 +261,11 @@ if (isset($_SESSION['user_id'])) {
     $current_user = $_SESSION['user_id'];
 
     // ユーザーのリンク情報を取得
-    $links = json_decode(file_get_contents('seisei.json'), true);
+    if (!file_exists('seisei.json')) {
+        $links = [];
+    } else {
+        $links = json_decode(file_get_contents('seisei.json'), true);
+    }
     $user_links = array_filter($links, function($link) use ($current_user) {
         return $link['user_id'] === $current_user;
     });
@@ -198,28 +309,64 @@ if (isset($_SESSION['user_id'])) {
         } else {
             $title = trim($_POST['title']);
             $target_url = trim($_POST['target_url']);
-            $image_path = trim($_POST['image_path']);
+            $image_option = $_POST['imageOption'];
+            $selected_template = trim($_POST['selectedTemplate']);
+            $image_path = '';
 
-            if (empty($title) || empty($target_url) || empty($image_path)) {
-                $errors[] = 'タイトル、遷移先URL、サムネイル画像を入力してください。';
-            } else {
-                // ユニークなIDの生成
-                $unique_id = uniqid();
-                $dir_path = $unique_id;
-                if (!mkdir($dir_path, 0777, true)) {
+            if (empty($title) || empty($target_url)) {
+                $errors[] = 'タイトルと遷移先URLを入力してください。';
+            }
+
+            // サムネイル画像の処理
+            if (empty($errors)) {
+                if ($image_option === 'url' && !empty($_POST['imageUrl'])) {
+                    $image_url = trim($_POST['imageUrl']);
+                    // 画像URLからダウンロードして保存
+                    $image_data = file_get_contents_curl($image_url);
+                    if ($image_data === false) {
+                        $errors[] = '画像URLから画像を取得できませんでした。';
+                    } else {
+                        $image_name = uniqid() . '.png';
+                        $image_path = 'uploads/' . $image_name;
+                        file_put_contents($image_path, $image_data);
+                    }
+                } elseif ($image_option === 'upload' && isset($_FILES['imageFile'])) {
+                    $file = $_FILES['imageFile'];
+                    if ($file['error'] === UPLOAD_ERR_OK) {
+                        $tmp_name = $file['tmp_name'];
+                        $image_name = uniqid() . '_' . basename($file['name']);
+                        $image_path = 'uploads/' . $image_name;
+                        move_uploaded_file($tmp_name, $image_path);
+                    } else {
+                        $errors[] = '画像ファイルのアップロードに失敗しました。';
+                    }
+                } elseif ($image_option === 'template' && !empty($selected_template)) {
+                    $image_path = 'temp/' . $selected_template;
+                    if (!file_exists($image_path)) {
+                        $errors[] = '選択されたテンプレート画像が存在しません。';
+                    }
+                } else {
+                    $errors[] = 'サムネイル画像の選択方法が正しくありません。';
+                }
+            }
+
+            // リンク生成
+            if (empty($errors)) {
+                // ユニークなディレクトリ名の生成
+                $unique_dir = uniqid();
+                if (!mkdir($unique_dir, 0777, true)) {
                     $errors[] = 'リンクフォルダの作成に失敗しました。';
                 } else {
                     // リダイレクト用のindex.phpを生成
                     $redirect_php = "<?php
-header('Location: " . addslashes($target_url) . "');
-exit;
-?>";
-                    file_put_contents($dir_path . '/index.php', $redirect_php);
+    header('Location: " . addslashes($target_url) . "');
+    exit;
+    ?>";
+                    file_put_contents($unique_dir . '/index.php', $redirect_php);
 
                     // リンク情報の保存
-                    $links = json_decode(file_get_contents('seisei.json'), true);
                     $links[] = [
-                        'unique_id' => $unique_id,
+                        'unique_id' => $unique_dir,
                         'user_id' => $current_user,
                         'title' => $title,
                         'target_url' => $target_url,
@@ -228,6 +375,7 @@ exit;
                     ];
                     file_put_contents('seisei.json', json_encode($links, JSON_PRETTY_PRINT));
 
+                    $generatedLink = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $unique_dir;
                     $success = true;
                     // リンク情報を再取得
                     $user_links = array_filter($links, function($link) use ($current_user) {
@@ -238,19 +386,15 @@ exit;
         }
     }
 
-    // ログアウト処理は上記で既に実装
-
-    // ユーザーダッシュボードの表示
+    // クリップボードコピー機能はJavaScript側で実装
     ?>
     <!DOCTYPE html>
     <html lang="ja">
     <head>
         <meta charset="UTF-8">
-        <title>ユーザーダッシュボード</title>
+        <title>サムネイル付きリンク生成サービス</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            /* スタイルをここに記述 */
-            /* 以下、index.phpで使用するスタイル */
             /* リセットCSS */
             * {
                 box-sizing: border-box;
@@ -320,13 +464,6 @@ exit;
                 font-size: 14px;
                 animation: shake 0.5s;
                 margin-top: 10px;
-            }
-            @keyframes shake {
-                0% { transform: translateX(0); }
-                25% { transform: translateX(-5px); }
-                50% { transform: translateX(5px); }
-                75% { transform: translateX(-5px); }
-                100% { transform: translateX(0); }
             }
             .success-message {
                 background-color: #1e1e1e;
@@ -500,6 +637,15 @@ exit;
                 border-radius: 10px;
                 animation: fadeIn 0.5s;
             }
+            /* ログアウトボタン */
+            .logout-button {
+                background: #ff5252;
+                color: #ffffff;
+            }
+            .logout-button:hover {
+                background: #ff1744;
+                transform: scale(1.02);
+            }
         </style>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
@@ -654,7 +800,6 @@ exit;
                         document.querySelector('.image-option-button[data-option="template"]').classList.add('active');
                     });
                 });
-
             });
 
             function openTemplateModal() {
@@ -665,7 +810,7 @@ exit;
     </head>
     <body>
         <div class="container">
-            <h1>ユーザーダッシュボード</h1>
+            <h1>サムネイル付きリンク生成サービス</h1>
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
@@ -676,7 +821,9 @@ exit;
 
             <?php if ($success): ?>
                 <div class="success-message">
-                    <p>リンクが正常に処理されました。</p>
+                    <p>リンクが正常に生成されました。</p>
+                    <p><a href="<?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?>" target="_blank"><?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?></a></p>
+                    <button id="copyButton">コピー</button>
                 </div>
             <?php endif; ?>
 
@@ -684,7 +831,7 @@ exit;
             <form method="POST" style="text-align: right;">
                 <input type="hidden" name="action" value="logout">
                 <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
-                <button type="submit">ログアウト</button>
+                <button type="submit" class="logout-button">ログアウト</button>
             </form>
 
             <!-- リンク生成フォーム -->
@@ -692,6 +839,7 @@ exit;
                 <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
                 <input type="hidden" id="imageOptionInput" name="imageOption" required>
                 <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
+                <input type="hidden" id="editedImageData" name="editedImageData">
 
                 <label>サムネイル画像の選択方法（必須）</label>
                 <div class="image-option-buttons">
@@ -751,6 +899,18 @@ exit;
                 <!-- 編集フォーム -->
                 <div id="editForm" class="edit-form" style="display:none;">
                     <h2>リンクの編集</h2>
+                    <?php if (!empty($errors)): ?>
+                        <div class="error">
+                            <?php foreach ($errors as $error): ?>
+                                <p><?php echo $error; ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                    <?php if ($success && $_POST['action'] === 'edit_link'): ?>
+                        <div class="success-message">
+                            <p>リンクが正常に変更されました。</p>
+                        </div>
+                    <?php endif; ?>
                     <form method="POST">
                         <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
                         <input type="hidden" name="action" value="edit_link">
@@ -803,133 +963,3 @@ exit;
         </script>
     </body>
     </html>
-    <?php
-    exit;
-}
-
-// ユーザーがログインしていない場合の処理
-?>
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>ログイン - サムネイル付きリンク生成サービス</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        /* スタイルをここに記述 */
-        /* リセットCSS */
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        /* 共通スタイル */
-        body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            animation: fadeIn 1s ease-in-out;
-        }
-        .login-container {
-            background-color: #1e1e1e;
-            padding: 30px;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 400px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-            animation: scaleUp 0.5s ease-in-out;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: bold;
-            font-size: 16px;
-        }
-        input[type="text"],
-        input[type="password"] {
-            width: 100%;
-            background-color: #2a2a2a;
-            color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            padding: 10px;
-            margin-top: 5px;
-            transition: background-color 0.3s;
-        }
-        input[type="text"]:focus,
-        input[type="password"]:focus {
-            background-color: #3a3a3a;
-            outline: none;
-        }
-        button {
-            background: linear-gradient(to right, #00e5ff, #00b0ff);
-            color: #000;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            padding: 15px;
-            margin-top: 20px;
-            cursor: pointer;
-            width: 100%;
-            transition: transform 0.2s;
-        }
-        button:hover {
-            background: linear-gradient(to right, #00b0ff, #00e5ff);
-            transform: scale(1.02);
-        }
-        .error {
-            color: #ff5252;
-            font-size: 14px;
-            animation: shake 0.5s;
-            margin-top: 10px;
-            text-align: center;
-        }
-        /* アニメーション */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        @keyframes scaleUp {
-            from { transform: scale(0.8); }
-            to { transform: scale(1); }
-        }
-        @keyframes shake {
-            0% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            50% { transform: translateX(5px); }
-            75% { transform: translateX(-5px); }
-            100% { transform: translateX(0); }
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <h1>ログイン</h1>
-        <?php if (!empty($errors)): ?>
-            <div class="error">
-                <?php foreach ($errors as $error): ?>
-                    <p><?php echo $error; ?></p>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-        <form method="POST">
-            <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
-            <input type="hidden" name="action" value="login">
-            <label>ユーザーID</label>
-            <input type="text" name="username" required>
-            <label>パスワード</label>
-            <input type="password" name="password" required>
-            <button type="submit">ログイン</button>
-        </form>
-    </div>
-</body>
-</html>
