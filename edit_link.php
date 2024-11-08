@@ -202,7 +202,7 @@ function generateRedirectPage($linkA, $title, $description, $twitterSite, $image
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>サムネイル付きリンク生成サービス</title>
+    <title>リンク編集 - <?php echo htmlspecialchars($linkData['title'], ENT_QUOTES, 'UTF-8'); ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* リセットCSS */
@@ -217,6 +217,16 @@ function generateRedirectPage($linkA, $title, $description, $twitterSite, $image
             color: #ffffff;
             font-family: 'Helvetica Neue', Arial, sans-serif;
             padding: 20px;
+        }
+        .container {
+            width: 90%;
+            max-width: 500px;
+            padding: 20px;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.5s;
+            margin: 0 auto;
         }
         h1 {
             text-align: center;
@@ -290,57 +300,6 @@ function generateRedirectPage($linkA, $title, $description, $twitterSite, $image
             50% { transform: translateX(5px); }
             75% { transform: translateX(-5px); }
             100% { transform: translateX(0); }
-        }
-        /* クッキー保存用 */
-        .rememberme {
-            margin-top: 10px;
-            display: flex;
-            align-items: center;
-        }
-        .rememberme input {
-            margin-right: 5px;
-        }
-        /* リンク生成フォーム */
-        .link-form {
-            display: none;
-            margin-top: 20px;
-        }
-        /* リンク一覧 */
-        .link-list {
-            margin-top: 20px;
-        }
-        .link-item {
-            background-color: #2a2a2a;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background-color 0.3s;
-        }
-        .link-item:hover {
-            background-color: #3a3a3a;
-        }
-        .link-actions button {
-            margin-left: 5px;
-            padding: 5px 10px;
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
-            border-radius: 3px;
-        }
-        .link-actions button.view {
-            background-color: #4caf50;
-            color: #fff;
-        }
-        .link-actions button.edit {
-            background-color: #2196f3;
-            color: #fff;
-        }
-        .link-actions button.delete {
-            background-color: #f44336;
-            color: #fff;
         }
         /* モーダルスタイル */
         .modal {
@@ -461,161 +420,13 @@ function generateRedirectPage($linkA, $title, $description, $twitterSite, $image
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            let selectedImageOption = '';
-
-            // 画像選択方法のボタン処理
-            const imageOptionButtons = document.querySelectorAll('.image-option-button');
-            imageOptionButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    // クラスの切り替え
-                    imageOptionButtons.forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-
-                    selectedImageOption = this.dataset.option;
-                    document.getElementById('imageOptionInput').value = selectedImageOption;
-
-                    // 各オプションの表示・非表示
-                    document.getElementById('imageUrlInput').style.display = 'none';
-                    document.getElementById('imageFileInput').style.display = 'none';
-
-                    if (selectedImageOption === 'url') {
-                        document.getElementById('imageUrlInput').style.display = 'block';
-                    } else if (selectedImageOption === 'upload') {
-                        document.getElementById('imageFileInput').style.display = 'block';
-                    } else if (selectedImageOption === 'template') {
-                        // テンプレート選択モーダルを表示
-                        openTemplateModal();
-                    }
-                });
-            });
-
-            // 詳細設定の表示・非表示
-            const detailsButton = document.getElementById('toggleDetails');
-            const detailsSection = document.getElementById('detailsSection');
-            detailsButton.addEventListener('click', function() {
-                if (detailsSection.style.display === 'none' || detailsSection.style.display === '') {
-                    detailsSection.style.display = 'block';
-                } else {
-                    detailsSection.style.display = 'none';
-                }
-            });
-
-            // クリップボードコピー機能
-            const copyButton = document.getElementById('copyButton');
-            if (copyButton) {
-                copyButton.addEventListener('click', function() {
-                    const copyText = document.getElementById('generatedLink');
-                    copyText.select();
-                    copyText.setSelectionRange(0, 99999);
-                    document.execCommand('copy');
-                    alert('リンクをコピーしました。');
-                });
-            }
-
-            // 画像プレビューと切り抜き処理
-            const imageFileInput = document.querySelector('input[name="imageFile"]');
-            if (imageFileInput) {
-                imageFileInput.addEventListener('change', function() {
-                    const file = this.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            loadImageAndCrop(e.target.result);
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                });
-            }
-
-            const imageUrlInput = document.querySelector('input[name="imageUrl"]');
-            if (imageUrlInput) {
-                imageUrlInput.addEventListener('blur', function() {
-                    const url = this.value;
-                    if (url) {
-                        loadImageAndCrop(url, true);
-                    }
-                });
-            }
-
-            function loadImageAndCrop(source, isUrl = false) {
-                const img = new Image();
-                img.crossOrigin = "Anonymous"; // CORS対策
-                img.onload = function() {
-                    // 2:1に切り抜き
-                    const canvas = document.createElement('canvas');
-                    const desiredWidth = img.width;
-                    const desiredHeight = img.width / 2; // アスペクト比2:1
-                    canvas.width = desiredWidth;
-                    canvas.height = desiredHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
-                    const dataURL = canvas.toDataURL('image/png');
-                    // プレビュー表示
-                    let preview = document.getElementById('imagePreview');
-                    if (!preview) {
-                        preview = document.createElement('img');
-                        preview.id = 'imagePreview';
-                        preview.classList.add('preview-image');
-                        document.querySelector('.container').appendChild(preview);
-                    }
-                    preview.src = dataURL;
-                    // editedImageDataにセット
-                    document.getElementById('editedImageData').value = dataURL;
-                };
-                img.onerror = function() {
-                    alert('画像を読み込めませんでした。');
-                };
-                if (isUrl) {
-                    img.src = source;
-                } else {
-                    img.src = source;
-                }
-            }
-
-            // テンプレート選択モーダルの処理
-            const templateModal = document.getElementById('templateModal');
-            const templateClose = document.getElementById('templateClose');
-            const templateItems = document.querySelectorAll('.template-item');
-
-            function openTemplateModal() {
-                templateModal.style.display = 'block';
-            }
-
-            templateClose.addEventListener('click', function() {
-                templateModal.style.display = 'none';
-            });
-
-            window.addEventListener('click', function(event) {
-                if (event.target == templateModal) {
-                    templateModal.style.display = 'none';
-                }
-            });
-
-            templateItems.forEach(item => {
-                item.addEventListener('click', function() {
-                    const radio = this.querySelector('input[type="radio"]');
-                    radio.checked = true;
-                    templateModal.style.display = 'none';
-                    // プレビュー表示
-                    let preview = document.getElementById('imagePreview');
-                    if (!preview) {
-                        preview = document.createElement('img');
-                        preview.id = 'imagePreview';
-                        preview.classList.add('preview-image');
-                        document.querySelector('.container').appendChild(preview);
-                    }
-                    preview.src = this.querySelector('img').src;
-                    // サーバーに送信するselectedTemplateの値を設定
-                    document.getElementById('selectedTemplateInput').value = radio.value;
-                });
-            });
-
+            // ユーザー編集モーダルの処理（必要に応じて）
         });
     </script>
 </head>
 <body>
     <div class="container">
-        <h1>サムネイル付きリンク生成サービス</h1>
+        <h1>管理者ダッシュボード</h1>
         <?php if (!empty($errors)): ?>
             <div class="error">
                 <?php foreach ($errors as $error): ?>
@@ -624,122 +435,88 @@ function generateRedirectPage($linkA, $title, $description, $twitterSite, $image
             </div>
         <?php endif; ?>
 
-        <?php if ($success): ?>
+        <?php if (!empty($successMessage)): ?>
             <div class="success-message">
-                <p>リンクが生成されました：</p>
-                <input type="text" id="generatedLink" value="<?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?>" readonly>
-                <button id="copyButton">コピー</button>
-                <p>保存しない場合、再度登録が必要です。</p>
+                <p><?php echo htmlspecialchars($successMessage, ENT_QUOTES, 'UTF-8'); ?></p>
             </div>
         <?php endif; ?>
 
-        <?php if (!isset($_SESSION['user'])): ?>
-            <!-- ログインフォーム -->
-            <form method="POST">
-                <label>ユーザー名</label>
-                <input type="text" name="username" required>
+        <!-- 新規ユーザー作成フォーム -->
+        <form method="POST">
+            <h2>新規ユーザーの作成</h2>
+            <label>ユーザー名</label>
+            <input type="text" name="new_username" required>
 
-                <label>パスワード</label>
-                <input type="password" name="password" required>
+            <label>パスワード</label>
+            <input type="password" name="new_password" required>
 
-                <div class="rememberme">
-                    <input type="checkbox" name="rememberme" id="rememberme">
-                    <label for="rememberme">ログイン状態を保持する</label>
-                </div>
+            <button type="submit" name="create_user">ユーザーを作成</button>
+        </form>
 
-                <button type="submit" name="login">ログイン</button>
-            </form>
-        <?php else: ?>
-            <!-- リンク生成フォーム -->
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" id="editedImageData" name="editedImageData">
-                <input type="hidden" id="imageOptionInput" name="imageOption" required>
-                <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
+        <!-- ユーザー一覧 -->
+        <h2>ユーザー一覧</h2>
+        <table>
+            <tr>
+                <th>ユーザー名</th>
+                <th>管理者</th>
+                <th>操作</th>
+            </tr>
+            <?php foreach ($userList as $username => $user): ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo $user['is_admin'] ? 'はい' : 'いいえ'; ?></td>
+                    <td class="action-buttons">
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="edit_user" value="<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>">
+                            <button type="submit" class="edit">編集</button>
+                        </form>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="delete_user" value="<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>">
+                            <button type="submit" class="delete">削除</button>
+                        </form>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="reset_password" value="<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>">
+                            <button type="submit" class="reset">パスワードリセット</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </table>
 
-                <label>遷移先URL（必須）</label>
-                <input type="url" name="linkA" required>
-
-                <label>タイトル（必須）</label>
-                <input type="text" name="title" required>
-
-                <label>サムネイル画像の選択方法（必須）</label>
-                <div class="image-option-buttons">
-                    <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
-                    <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                    <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
-                </div>
-
-                <div id="imageUrlInput" style="display:none;">
-                    <label>画像URLを入力</label>
-                    <input type="url" name="imageUrl">
-                </div>
-
-                <div id="imageFileInput" style="display:none;">
-                    <label>画像ファイルをアップロード</label>
-                    <input type="file" name="imageFile" accept="image/*">
-                </div>
-
-                <!-- テンプレート選択モーダル -->
-                <div id="templateModal" class="modal">
-                    <div class="modal-content">
-                        <span class="close" id="templateClose">&times;</span>
-                        <h2>テンプレートを選択</h2>
-                        <div class="template-grid">
-                            <?php
-                            $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                            foreach ($templates as $template):
-                            ?>
-                                <div class="template-item">
-                                    <img src="<?php echo htmlspecialchars($tempDir . '/' . $template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                </div>
-
-                <button type="button" id="toggleDetails">詳細設定</button>
-                <div id="detailsSection" class="details-section">
-                    <label>ページの説明</label>
-                    <textarea name="description"></textarea>
-
-                    <label>Twitterアカウント名（@を含む）</label>
-                    <input type="text" name="twitterSite">
-
-                    <label>画像の代替テキスト</label>
-                    <input type="text" name="imageAlt">
-                </div>
-
-                <button type="submit" name="generate">リンクを生成</button>
-            </form>
-
-            <!-- ユーザーのリンク一覧 -->
-            <div class="link-list">
-                <h2>生成したリンク一覧</h2>
-                <?php if (!empty($seiseiData[$currentUser])): ?>
-                    <?php foreach ($seiseiData[$currentUser] as $id => $link): ?>
-                        <div class="link-item">
-                            <div>
-                                <a href="<?php echo htmlspecialchars('https://' . $_SERVER['HTTP_HOST'] . '/' . $id, ENT_QUOTES, 'UTF-8'); ?>" target="_blank"><?php echo htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8'); ?></a>
-                            </div>
-                            <div class="link-actions">
-                                <button class="view" onclick="window.open('<?php echo htmlspecialchars('https://' . $_SERVER['HTTP_HOST'] . '/' . $id, ENT_QUOTES, 'UTF-8'); ?>', '_blank')">表示</button>
-                                <button class="edit" onclick="window.location.href='edit_link.php?id=<?php echo urlencode($id); ?>'">編集</button>
-                                <button class="delete" onclick="if(confirm('本当に削除しますか？')){ window.location.href='delete_link.php?id=<?php echo urlencode($id); ?>' }">削除</button>
-                            </div>
-                        </div>
+        <!-- アクセスログ -->
+        <div class="logs">
+            <h2>アクセスログ</h2>
+            <table>
+                <tr>
+                    <th>ユーザー名</th>
+                    <th>アクション</th>
+                    <th>タイムスタンプ</th>
+                </tr>
+                <?php if (!empty($logs)): ?>
+                    <?php foreach (array_reverse($logs) as $log): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($log['user'], ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?php echo htmlspecialchars($log['action'], ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?php echo htmlspecialchars($log['timestamp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <p>まだリンクが生成されていません。</p>
+                    <tr>
+                        <td colspan="3">ログがありません。</td>
+                    </tr>
                 <?php endif; ?>
-            </div>
+            </table>
+        </div>
 
-            <!-- ログアウトボタン -->
-            <form method="GET" style="margin-top: 20px;">
-                <button type="submit" name="action" value="logout" class="logout-button">ログアウト</button>
-            </form>
-        <?php endif; ?>
+        <!-- バックアップボタン -->
+        <form method="POST">
+            <button type="submit" name="backup" class="backup-button">データのバックアップ</button>
+        </form>
+
+        <!-- 管理者ログアウトボタン -->
+        <form method="GET" style="margin-top: 20px;">
+            <button type="submit" name="action" value="logout" class="logout-button">ログアウト</button>
+        </form>
     </div>
 </body>
 </html>
