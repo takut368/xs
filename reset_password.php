@@ -9,8 +9,10 @@ if (!isset($_SESSION['username'])) {
 
 $username = $_SESSION['username'];
 
-// 初回ログイン時のみアクセス可能
+// ユーザー情報の読み込み
 $users = json_decode(file_get_contents('data/users.json'), true);
+
+// パスワード変更が必要でない場合、ホームページへリダイレクト
 if (!$users[$username]['force_reset']) {
     header('Location: index.php');
     exit();
@@ -164,10 +166,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php else: ?>
             <form method="POST">
                 <label for="new_password">新しいパスワード</label>
-                <input type="text" id="new_password" name="new_password" required>
+                <input type="password" id="new_password" name="new_password" required>
 
                 <label for="confirm_password">パスワード確認</label>
-                <input type="text" id="confirm_password" name="confirm_password" required>
+                <input type="password" id="confirm_password" name="confirm_password" required>
 
                 <button type="submit">パスワード変更</button>
             </form>
