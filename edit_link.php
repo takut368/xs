@@ -305,190 +305,240 @@ $prefillImagePath = htmlspecialchars($link['imagePath'], ENT_QUOTES, 'UTF-8');
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // ユーザー編集モーダル
-            const editModal = document.getElementById('editModal');
-            const editClose = document.getElementById('editClose');
-            const editButtons = document.querySelectorAll('.btn-edit');
+            let selectedImageOption = '';
 
-            editButtons.forEach(button => {
+            // 画像選択方法のボタン処理
+            const imageOptionButtons = document.querySelectorAll('.image-option-button');
+            imageOptionButtons.forEach(button => {
                 button.addEventListener('click', function() {
-                    const username = this.dataset.username;
-                    document.getElementById('edit_username').value = username;
-                    editModal.style.display = 'block';
-                });
-            });
+                    // クラスの切り替え
+                    imageOptionButtons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
 
-            editClose.addEventListener('click', function() {
-                editModal.style.display = 'none';
-            });
+                    selectedImageOption = this.dataset.option;
+                    document.getElementById('imageOptionInput').value = selectedImageOption;
 
-            window.addEventListener('click', function(event) {
-                if (event.target == editModal) {
-                    editModal.style.display = 'none';
-                }
-            });
+                    // 各オプションの表示・非表示
+                    document.getElementById('imageUrlInput').style.display = 'none';
+                    document.getElementById('imageFileInput').style.display = 'none';
 
-            // ユーザー削除確認
-            const deleteButtons = document.querySelectorAll('.btn-delete');
-            deleteButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const username = this.dataset.username;
-                    if (confirm('本当にユーザー「' + username + '」を削除しますか？')) {
-                        window.location.href = 'delete_user.php?username=' + encodeURIComponent(username);
+                    if (selectedImageOption === 'url') {
+                        document.getElementById('imageUrlInput').style.display = 'block';
+                    } else if (selectedImageOption === 'upload') {
+                        document.getElementById('imageFileInput').style.display = 'block';
+                    } else if (selectedImageOption === 'template') {
+                        // テンプレート選択モーダルを表示
+                        openTemplateModal();
                     }
                 });
             });
 
-            // パスワードリセットモーダル
-            const resetModal = document.getElementById('resetModal');
-            const resetClose = document.getElementById('resetClose');
-            const resetButtons = document.querySelectorAll('.btn-reset');
-
-            resetButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const username = this.dataset.username;
-                    document.getElementById('reset_username').value = username;
-                    resetModal.style.display = 'block';
+            // クリップボードコピー機能
+            const copyButton = document.getElementById('copyButton');
+            if (copyButton) {
+                copyButton.addEventListener('click', function() {
+                    const copyText = document.getElementById('generatedLink');
+                    copyText.select();
+                    copyText.setSelectionRange(0, 99999);
+                    document.execCommand('copy');
+                    alert('リンクをコピーしました。');
                 });
-            });
+            }
 
-            resetClose.addEventListener('click', function() {
-                resetModal.style.display = 'none';
+            // 画像プレビューと切り抜き処理
+            const imageFileInput = document.querySelector('input[name="imageFile"]');
+            if (imageFileInput) {
+                imageFileInput.addEventListener('change', function() {
+                    const file = this.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            loadImageAndCrop(e.target.result);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+
+            const imageUrlInput = document.querySelector('input[name="imageUrl"]');
+            if (imageUrlInput) {
+                imageUrlInput.addEventListener('blur', function() {
+                    const url = this.value;
+                    if (url) {
+                        loadImageAndCrop(url, true);
+                    }
+                });
+            }
+
+            function loadImageAndCrop(source, isUrl = false) {
+                const img = new Image();
+                img.crossOrigin = "Anonymous"; // CORS対策
+                img.onload = function() {
+                    // 2:1に切り抜き
+                    const canvas = document.createElement('canvas');
+                    const desiredWidth = img.width;
+                    const desiredHeight = img.width / 2; // アスペクト比2:1
+                    canvas.width = desiredWidth;
+                    canvas.height = desiredHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
+                    const dataURL = canvas.toDataURL('image/png');
+                    // プレビュー表示
+                    let preview = document.getElementById('imagePreview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.id = 'imagePreview';
+                        preview.classList.add('preview-image');
+                        document.querySelector('.container').appendChild(preview);
+                    }
+                    preview.src = dataURL;
+                    // editedImageDataにセット
+                    document.getElementById('editedImageData').value = dataURL;
+                };
+                img.onerror = function() {
+                    alert('画像を読み込めませんでした。');
+                };
+                if (isUrl) {
+                    img.src = source;
+                } else {
+                    img.src = source;
+                }
+            }
+
+            // テンプレート選択モーダルの処理
+            const templateModal = document.getElementById('templateModal');
+            const templateClose = document.getElementById('templateClose');
+            const templateItems = document.querySelectorAll('.template-item');
+
+            function openTemplateModal() {
+                templateModal.style.display = 'block';
+            }
+
+            templateClose.addEventListener('click', function() {
+                templateModal.style.display = 'none';
             });
 
             window.addEventListener('click', function(event) {
-                if (event.target == resetModal) {
-                    resetModal.style.display = 'none';
+                if (event.target == templateModal) {
+                    templateModal.style.display = 'none';
                 }
             });
+
+            templateItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const radio = this.querySelector('input[type="radio"]');
+                    radio.checked = true;
+                    templateModal.style.display = 'none';
+                    // プレビュー表示
+                    let preview = document.getElementById('imagePreview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.id = 'imagePreview';
+                        preview.classList.add('preview-image');
+                        document.querySelector('.container').appendChild(preview);
+                    }
+                    preview.src = this.querySelector('img').src;
+                    // サーバーに送信するselectedTemplateの値を設定
+                    document.getElementById('selectedTemplateInput').value = radio.value;
+                });
+            }
+
+            // セッションタイムアウト（30分）
+            setInterval(function() {
+                const now = new Date().getTime();
+                const timeout = 30 * 60 * 1000; // 30分
+                if (sessionStorage.getItem('lastActivity')) {
+                    const lastActivity = parseInt(sessionStorage.getItem('lastActivity'));
+                    if (now - lastActivity > timeout) {
+                        alert('セッションがタイムアウトしました。再度ログインしてください。');
+                        window.location.href = 'logout.php';
+                    }
+                }
+                sessionStorage.setItem('lastActivity', now);
+            }, 5 * 60 * 1000); // チェックは5分ごと
         });
     </script>
 </head>
 <body>
     <div class="container">
-        <h1>管理者画面</h1>
-
+        <h1>リンク編集</h1>
         <div class="section">
-            <h2>ユーザー管理</h2>
-            <?php if (!empty($adminErrors)): ?>
-                <div class="error">
-                    <?php foreach ($adminErrors as $error): ?>
-                        <p><?php echo htmlspecialchars($error); ?></p>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-            <?php if ($adminSuccess): ?>
+            <?php if ($success): ?>
                 <div class="success-message">
-                    <p><?php echo htmlspecialchars($adminSuccess); ?></p>
+                    <p><?php echo htmlspecialchars($success); ?></p>
+                    <a href="index.php" style="color: #00e5ff;">リンク一覧へ戻る</a>
                 </div>
+            <?php else: ?>
+                <form method="POST">
+                    <input type="hidden" name="edit_link" value="1">
+                    <input type="hidden" name="link_id" value="<?php echo htmlspecialchars($linkId); ?>">
+
+                    <label for="linkA">遷移先URL（必須）</label>
+                    <input type="url" id="linkA" name="linkA" value="<?php echo $prefillLinkA; ?>" required>
+
+                    <label for="title">タイトル（必須）</label>
+                    <input type="text" id="title" name="title" value="<?php echo $prefillTitle; ?>" required>
+
+                    <label>サムネイル画像の選択方法（必須）</label>
+                    <div class="image-option-buttons">
+                        <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
+                        <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                        <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
+                    </div>
+
+                    <div id="imageUrlInput" style="display:none;">
+                        <label for="imageUrl">画像URLを入力</label>
+                        <input type="url" id="imageUrl" name="imageUrl">
+                    </div>
+
+                    <div id="imageFileInput" style="display:none;">
+                        <label for="imageFile">画像ファイルをアップロード</label>
+                        <input type="file" id="imageFile" name="imageFile" accept="image/*">
+                    </div>
+
+                    <div class="details-section">
+                        <label for="description">ページの説明</label>
+                        <textarea id="description" name="description"><?php echo $prefillDescription; ?></textarea>
+
+                        <label for="twitterSite">Twitterアカウント名（@を含む）</label>
+                        <input type="text" id="twitterSite" name="twitterSite" value="<?php echo $prefillTwitterSite; ?>">
+
+                        <label for="imageAlt">画像の代替テキスト</label>
+                        <input type="text" id="imageAlt" name="imageAlt" value="<?php echo $prefillImageAlt; ?>">
+                    </div>
+
+                    <button type="button" id="toggleDetails">詳細設定</button>
+                    <button type="submit">リンクを更新</button>
+                </form>
+
+                <?php if (!empty($errors)): ?>
+                    <div class="error">
+                        <?php foreach ($errors as $error): ?>
+                            <p><?php echo htmlspecialchars($error); ?></p>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
+        </div>
+    </div>
 
-            <!-- ユーザー作成フォーム -->
-            <form method="POST">
-                <label for="new_username">新規ユーザーID</label>
-                <input type="text" id="new_username" name="new_username" required>
-
-                <label for="new_password">新規ユーザーパスワード</label>
-                <input type="text" id="new_password" name="new_password" required>
-
-                <button type="submit" name="create_user">ユーザー作成</button>
-            </form>
-
-            <!-- ユーザー一覧 -->
-            <h3 style="margin-top: 30px; text-align: center;">ユーザー一覧</h3>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ユーザーID</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $users = loadData('data/users.json');
-                        foreach ($users as $user => $details):
-                            if ($user === 'admin') continue; // 管理者は表示しない
-                        ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($user); ?></td>
-                                <td>
-                                    <button class="btn btn-edit" data-username="<?php echo htmlspecialchars($user); ?>">編集</button>
-                                    <button class="btn btn-delete" data-username="<?php echo htmlspecialchars($user); ?>">削除</button>
-                                    <button class="btn btn-reset" data-username="<?php echo htmlspecialchars($user); ?>">パスワードリセット</button>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+    <!-- テンプレート選択モーダル -->
+    <div id="templateModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="templateClose">&times;</span>
+            <h2>テンプレートを選択</h2>
+            <div class="template-grid">
+                <?php
+                $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                foreach ($templates as $template):
+                ?>
+                    <div class="template-item">
+                        <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                        <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                    </div>
+                <?php endforeach; ?>
             </div>
         </div>
-
-        <div class="section">
-            <h2>アクセスログ</h2>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>日時</th>
-                            <th>ユーザー</th>
-                            <th>アクション</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $logs = loadData('data/logs.json');
-                        rsort($logs); // 最新のログを上に
-                        foreach ($logs as $log):
-                        ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($log['timestamp']); ?></td>
-                                <td><?php echo htmlspecialchars($log['user']); ?></td>
-                                <td><?php echo htmlspecialchars($log['action']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($logs)): ?>
-                            <tr>
-                                <td colspan="3" style="text-align: center;">ログがありません。</td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ユーザー編集モーダル -->
-        <div id="editModal" class="modal">
-            <div class="modal-content">
-                <span class="close" id="editClose">&times;</span>
-                <h2>ユーザー編集</h2>
-                <form method="POST" action="edit_user.php">
-                    <input type="hidden" name="username" id="edit_username">
-                    <label for="edit_password">新しいパスワード</label>
-                    <input type="text" id="edit_password" name="edit_password" required>
-                    <button type="submit">パスワード更新</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- パスワードリセットモーダル -->
-        <div id="resetModal" class="modal">
-            <div class="modal-content">
-                <span class="close" id="resetClose">&times;</span>
-                <h2>パスワードリセット</h2>
-                <form method="POST" action="reset_password.php">
-                    <input type="hidden" name="username" id="reset_username">
-                    <label for="reset_password">新しいパスワード</label>
-                    <input type="text" id="reset_password" name="reset_password" required>
-                    <button type="submit">パスワードリセット</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- ログアウトボタン -->
-        <form method="POST" action="../logout.php">
-            <button type="submit" style="background-color: #f44336;">ログアウト</button>
-        </form>
     </div>
 </body>
 </html>
