@@ -1,5 +1,5 @@
 <?php
-// セッションの開始は一番最初に行う必要があります
+// セッションの開始
 session_start();
 
 // 自動作成関数
@@ -12,29 +12,25 @@ function autoCreateFilesAndFolders() {
     }
 
     // 初期データファイルの作成
-    $usersFile = 'data/users.json';
-    if (!file_exists($usersFile)) {
-        $initialUsers = [
+    $dataFiles = [
+        'data/users.json' => json_encode([
             'admin' => [
                 'password' => 'admin', // 平文で管理
                 'force_reset' => false
             ]
-        ];
-        file_put_contents($usersFile, json_encode($initialUsers, JSON_PRETTY_PRINT));
-    }
+        ], JSON_PRETTY_PRINT),
+        'data/seisei.json' => json_encode([], JSON_PRETTY_PRINT),
+        'data/logs.json' => json_encode([], JSON_PRETTY_PRINT)
+    ];
 
-    $seiseiFile = 'data/seisei.json';
-    if (!file_exists($seiseiFile)) {
-        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT));
-    }
-
-    $logsFile = 'data/logs.json';
-    if (!file_exists($logsFile)) {
-        file_put_contents($logsFile, json_encode([], JSON_PRETTY_PRINT));
+    foreach ($dataFiles as $file => $content) {
+        if (!file_exists($file)) {
+            file_put_contents($file, $content);
+        }
     }
 
     // 初期テンプレート画像の確認（既に配置されている前提）
-    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png', 'saisei_button.png'];
+    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
     foreach ($templateImages as $image) {
         if (!file_exists('temp/' . $image)) {
             // ダミー画像を作成（実際には適切なテンプレート画像を配置してください）
@@ -98,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $users = loadData('data/users.json');
 
     if (isset($users[$inputUsername])) {
-        if ($inputPassword === $users[$inputUsername]['password']) {
+        if ($users[$inputUsername]['password'] === $inputPassword) { // 平文パスワード比較
             // 認証成功
             $_SESSION['username'] = $inputUsername;
 
@@ -205,7 +201,8 @@ if ($username && !$isAdmin) {
                     $errors[] = 'ディレクトリの作成に失敗しました。';
                 } else {
                     $filePath = $dirPath . '/index.php';
-                    $htmlContent = generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath, $linkA);
+                    $redirectURL = $linkA;
+                    $htmlContent = generateRedirectPhp($redirectURL);
                     file_put_contents($filePath, $htmlContent);
                     $generatedLink = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $uniqueDir;
                     $success = true;
@@ -253,24 +250,17 @@ if ($username && !$isAdmin) {
     }
 }
 
-// HTMLコンテンツ生成関数（リダイレクト用）
-function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath, $redirectURL) {
-    $imageUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $imagePath;
-    $metaDescription = !empty($description) ? $description : $title;
-    $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . $twitterSite . '">' : '';
-    $imageAltTag = !empty($imageAlt) ? $imageAlt : $title;
-
-    $html = '<?php
+// HTMLコンテンツ生成関数（リダイレクト用のPHPファイル）
+function generateRedirectPhp($redirectURL) {
+    $php = '<?php
     header("Location: ' . htmlspecialchars($redirectURL, ENT_QUOTES, 'UTF-8') . '");
     exit();
     ?>';
-
-    return $html;
+    return $php;
 }
 
 // 画像保存関数
-function saveImage($imageData)
-{
+function saveImage($imageData) {
     $imageName = uniqid() . '.png';
     $imagePath = 'uploads/' . $imageName;
     file_put_contents($imagePath, $imageData);
@@ -322,6 +312,7 @@ function saveImage($imageData)
         }
         input[type="text"],
         input[type="url"],
+        input[type="password"],
         textarea {
             width: 100%;
             background-color: #2a2a2a;
@@ -335,6 +326,7 @@ function saveImage($imageData)
         }
         input[type="text"]:focus,
         input[type="url"]:focus,
+        input[type="password"]:focus,
         textarea:focus {
             background-color: #3a3a3a;
             outline: none;
@@ -625,7 +617,7 @@ function saveImage($imageData)
                     }
                     preview.src = dataURL;
                     // editedImageDataにセット
-                    document.getElementById('editedImageData').value = $dataURL;
+                    document.getElementById('editedImageData').value = dataURL;
                 };
                 img.onerror = function() {
                     alert('画像を読み込めませんでした。');
@@ -731,33 +723,31 @@ function saveImage($imageData)
                 <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
                     <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
-                </div>
-                <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
                 </div>
 
                 <div id="imageUrlInput" style="display:none;">
-                    <label for="imageUrl">画像URLを入力</label>
-                    <input type="url" id="imageUrl" name="imageUrl">
+                    <label>画像URLを入力</label>
+                    <input type="url" name="imageUrl">
                 </div>
 
                 <div id="imageFileInput" style="display:none;">
-                    <label for="imageFile">画像ファイルをアップロード</label>
-                    <input type="file" id="imageFile" name="imageFile" accept="image/*">
+                    <label>画像ファイルをアップロード</label>
+                    <input type="file" name="imageFile" accept="image/*">
+                </div>
+
+                <div class="details-section">
+                    <label>ページの説明</label>
+                    <textarea name="description"></textarea>
+
+                    <label>Twitterアカウント名（@を含む）</label>
+                    <input type="text" name="twitterSite">
+
+                    <label>画像の代替テキスト</label>
+                    <input type="text" name="imageAlt">
                 </div>
 
                 <button type="button" id="toggleDetails">詳細設定</button>
-                <div id="detailsSection" class="details-section">
-                    <label for="description">ページの説明</label>
-                    <textarea id="description" name="description"><?php echo isset($_POST['description']) ? htmlspecialchars($_POST['description'], ENT_QUOTES, 'UTF-8') : ''; ?></textarea>
-
-                    <label for="twitterSite">Twitterアカウント名（@を含む）</label>
-                    <input type="text" id="twitterSite" name="twitterSite" value="<?php echo isset($_POST['twitterSite']) ? htmlspecialchars($_POST['twitterSite'], ENT_QUOTES, 'UTF-8') : ''; ?>">
-
-                    <label for="imageAlt">画像の代替テキスト</label>
-                    <input type="text" id="imageAlt" name="imageAlt" value="<?php echo isset($_POST['imageAlt']) ? htmlspecialchars($_POST['imageAlt'], ENT_QUOTES, 'UTF-8') : ''; ?>">
-                </div>
-
                 <button type="submit">リンクを生成</button>
             </form>
 
@@ -783,39 +773,37 @@ function saveImage($imageData)
                 <input type="text" name="search" placeholder="タイトルまたはURLで検索" value="<?php echo htmlspecialchars($search); ?>">
                 <button type="submit">検索</button>
             </form>
-            <div class="table-responsive">
-                <table border="1" cellpadding="10" cellspacing="0" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
-                    <thead>
+            <table border="1" cellpadding="10" cellspacing="0" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>タイトル</th>
+                        <th>URL</th>
+                        <th>生成日時</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($filteredLinks)): ?>
                         <tr>
-                            <th>ID</th>
-                            <th>タイトル</th>
-                            <th>URL</th>
-                            <th>生成日時</th>
-                            <th>操作</th>
+                            <td colspan="5" style="text-align: center;">リンクがありません。</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($filteredLinks)): ?>
+                    <?php else: ?>
+                        <?php foreach ($filteredLinks as $id => $link): ?>
                             <tr>
-                                <td colspan="5" style="text-align: center;">リンクがありません。</td>
+                                <td><?php echo htmlspecialchars($id); ?></td>
+                                <td><?php echo htmlspecialchars($link['title']); ?></td>
+                                <td><a href="<?php echo htmlspecialchars($link['linkA']); ?>" target="_blank">遷移先URL</a></td>
+                                <td><?php echo htmlspecialchars($link['created_at']); ?></td>
+                                <td>
+                                    <a href="edit_link.php?id=<?php echo urlencode($id); ?>" style="color: #4CAF50;">編集</a> |
+                                    <a href="delete_link.php?id=<?php echo urlencode($id); ?>" style="color: #f44336;" onclick="return confirm('本当に削除しますか？');">削除</a>
+                                </td>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($filteredLinks as $id => $link): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($id); ?></td>
-                                    <td><?php echo htmlspecialchars($link['title']); ?></td>
-                                    <td><a href="<?php echo htmlspecialchars($link['linkA']); ?>" target="_blank">遷移先URL</a></td>
-                                    <td><?php echo htmlspecialchars($link['created_at']); ?></td>
-                                    <td>
-                                        <a href="edit_link.php?id=<?php echo urlencode($id); ?>" style="color: #4CAF50;">編集</a> |
-                                        <a href="delete_link.php?id=<?php echo urlencode($id); ?>" style="color: #f44336;" onclick="return confirm('本当に削除しますか？');">削除</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
 
             <!-- ログアウトボタン -->
             <form method="POST" action="logout.php">
@@ -835,8 +823,8 @@ function saveImage($imageData)
                 foreach ($templates as $template):
                 ?>
                     <div class="template-item">
-                        <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                        <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                        <img src="temp/<?php echo htmlspecialchars($template); ?>" alt="<?php echo htmlspecialchars($template); ?>">
+                        <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template); ?>">
                     </div>
                 <?php endforeach; ?>
             </div>
