@@ -12,21 +12,25 @@ function autoCreateFilesAndFolders() {
     }
 
     // 初期データファイルの作成
-    $dataFiles = [
-        'data/users.json' => json_encode([
+    $usersFile = 'data/users.json';
+    if (!file_exists($usersFile)) {
+        $initialUsers = [
             'admin' => [
-                'password' => password_hash('admin', PASSWORD_BCRYPT),
+                'password' => 'admin', // 平文で管理
                 'force_reset' => false
             ]
-        ], JSON_PRETTY_PRINT),
-        'data/seisei.json' => json_encode([], JSON_PRETTY_PRINT),
-        'data/logs.json' => json_encode([], JSON_PRETTY_PRINT)
-    ];
+        ];
+        file_put_contents($usersFile, json_encode($initialUsers, JSON_PRETTY_PRINT));
+    }
 
-    foreach ($dataFiles as $file => $content) {
-        if (!file_exists($file)) {
-            file_put_contents($file, $content);
-        }
+    $seiseiFile = 'data/seisei.json';
+    if (!file_exists($seiseiFile)) {
+        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT));
+    }
+
+    $logsFile = 'data/logs.json';
+    if (!file_exists($logsFile)) {
+        file_put_contents($logsFile, json_encode([], JSON_PRETTY_PRINT));
     }
 
     // 初期テンプレート画像の確認（既に配置されている前提）
@@ -94,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $users = loadData('data/users.json');
 
     if (isset($users[$inputUsername])) {
-        if (password_verify($inputPassword, $users[$inputUsername]['password'])) {
+        if ($inputPassword === $users[$inputUsername]['password']) {
             // 認証成功
             $_SESSION['username'] = $inputUsername;
 
@@ -262,6 +266,15 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
     ?>';
 
     return $html;
+}
+
+// 画像保存関数
+function saveImage($imageData)
+{
+    $imageName = uniqid() . '.png';
+    $imagePath = 'uploads/' . $imageName;
+    file_put_contents($imagePath, $imageData);
+    return $imagePath;
 }
 ?>
 <!DOCTYPE html>
@@ -612,7 +625,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                     }
                     preview.src = dataURL;
                     // editedImageDataにセット
-                    document.getElementById('editedImageData').value = dataURL;
+                    document.getElementById('editedImageData').value = $dataURL;
                 };
                 img.onerror = function() {
                     alert('画像を読み込めませんでした。');
@@ -636,11 +649,13 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             templateClose.addEventListener('click', function() {
                 templateModal.style.display = 'none';
             });
+
             window.addEventListener('click', function(event) {
                 if (event.target == templateModal) {
                     templateModal.style.display = 'none';
                 }
             });
+
             templateItems.forEach(item => {
                 item.addEventListener('click', function() {
                     const radio = this.querySelector('input[type="radio"]');
@@ -694,7 +709,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -704,6 +719,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 <input type="hidden" name="generate" value="1">
                 <input type="hidden" id="imageOptionInput" name="imageOption" required>
                 <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
+                <input type="hidden" id="editedImageData" name="editedImageData">
 
                 <label>遷移先URL（必須）</label>
                 <input type="url" name="linkA" required>
@@ -721,25 +737,25 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 </div>
 
                 <div id="imageUrlInput" style="display:none;">
-                    <label>画像URLを入力</label>
-                    <input type="url" name="imageUrl">
+                    <label for="imageUrl">画像URLを入力</label>
+                    <input type="url" id="imageUrl" name="imageUrl">
                 </div>
 
                 <div id="imageFileInput" style="display:none;">
-                    <label>画像ファイルをアップロード</label>
-                    <input type="file" name="imageFile" accept="image/*">
+                    <label for="imageFile">画像ファイルをアップロード</label>
+                    <input type="file" id="imageFile" name="imageFile" accept="image/*">
                 </div>
 
                 <button type="button" id="toggleDetails">詳細設定</button>
                 <div id="detailsSection" class="details-section">
-                    <label>ページの説明</label>
-                    <textarea name="description"></textarea>
+                    <label for="description">ページの説明</label>
+                    <textarea id="description" name="description"><?php echo isset($_POST['description']) ? htmlspecialchars($_POST['description'], ENT_QUOTES, 'UTF-8') : ''; ?></textarea>
 
-                    <label>Twitterアカウント名（@を含む）</label>
-                    <input type="text" name="twitterSite">
+                    <label for="twitterSite">Twitterアカウント名（@を含む）</label>
+                    <input type="text" id="twitterSite" name="twitterSite" value="<?php echo isset($_POST['twitterSite']) ? htmlspecialchars($_POST['twitterSite'], ENT_QUOTES, 'UTF-8') : ''; ?>">
 
-                    <label>画像の代替テキスト</label>
-                    <input type="text" name="imageAlt">
+                    <label for="imageAlt">画像の代替テキスト</label>
+                    <input type="text" id="imageAlt" name="imageAlt" value="<?php echo isset($_POST['imageAlt']) ? htmlspecialchars($_POST['imageAlt'], ENT_QUOTES, 'UTF-8') : ''; ?>">
                 </div>
 
                 <button type="submit">リンクを生成</button>
@@ -756,7 +772,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -767,43 +783,64 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
                 <input type="text" name="search" placeholder="タイトルまたはURLで検索" value="<?php echo htmlspecialchars($search); ?>">
                 <button type="submit">検索</button>
             </form>
-            <table border="1" cellpadding="10" cellspacing="0" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>タイトル</th>
-                        <th>URL</th>
-                        <th>生成日時</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($filteredLinks)): ?>
+            <div class="table-responsive">
+                <table border="1" cellpadding="10" cellspacing="0" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                    <thead>
                         <tr>
-                            <td colspan="5" style="text-align: center;">リンクがありません。</td>
+                            <th>ID</th>
+                            <th>タイトル</th>
+                            <th>URL</th>
+                            <th>生成日時</th>
+                            <th>操作</th>
                         </tr>
-                    <?php else: ?>
-                        <?php foreach ($filteredLinks as $id => $link): ?>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($filteredLinks)): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($id); ?></td>
-                                <td><?php echo htmlspecialchars($link['title']); ?></td>
-                                <td><a href="<?php echo htmlspecialchars($link['linkA']); ?>" target="_blank">遷移先URL</a></td>
-                                <td><?php echo htmlspecialchars($link['created_at']); ?></td>
-                                <td>
-                                    <a href="edit_link.php?id=<?php echo urlencode($id); ?>" style="color: #4CAF50;">編集</a> |
-                                    <a href="delete_link.php?id=<?php echo urlencode($id); ?>" style="color: #f44336;" onclick="return confirm('本当に削除しますか？');">削除</a>
-                                </td>
+                                <td colspan="5" style="text-align: center;">リンクがありません。</td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        <?php else: ?>
+                            <?php foreach ($filteredLinks as $id => $link): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($id); ?></td>
+                                    <td><?php echo htmlspecialchars($link['title']); ?></td>
+                                    <td><a href="<?php echo htmlspecialchars($link['linkA']); ?>" target="_blank">遷移先URL</a></td>
+                                    <td><?php echo htmlspecialchars($link['created_at']); ?></td>
+                                    <td>
+                                        <a href="edit_link.php?id=<?php echo urlencode($id); ?>" style="color: #4CAF50;">編集</a> |
+                                        <a href="delete_link.php?id=<?php echo urlencode($id); ?>" style="color: #f44336;" onclick="return confirm('本当に削除しますか？');">削除</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
 
             <!-- ログアウトボタン -->
             <form method="POST" action="logout.php">
                 <button type="submit" style="background-color: #f44336;">ログアウト</button>
             </form>
         <?php endif; ?>
+    </div>
+
+    <!-- テンプレート選択モーダル -->
+    <div id="templateModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="templateClose">&times;</span>
+            <h2>テンプレートを選択</h2>
+            <div class="template-grid">
+                <?php
+                $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                foreach ($templates as $template):
+                ?>
+                    <div class="template-item">
+                        <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
+                        <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 </body>
 </html>
