@@ -1,61 +1,65 @@
 <?php
-// セッションの開始
 session_start();
 
-// 自動作成するディレクトリとファイルのパス
-$baseDir = __DIR__;
-$dataDir = $baseDir . '/data';
-$seiseiFile = $dataDir . '/seisei.json';
-$logsFile = $dataDir . '/logs.json';
-
-// ユーザーがログインしているか確認
-if (!isset($_SESSION['user']) || $_SESSION['user'] === 'admin') {
-    header("Location: index.php");
+// 認証チェック
+if (!isset($_SESSION['username'])) {
+    header('Location: index.php');
     exit();
 }
 
-$currentUser = $_SESSION['user'];
+$username = $_SESSION['username'];
+$isAdmin = ($username === 'admin');
 
-// リンクIDの取得
-if (!isset($_GET['id'])) {
-    header("Location: index.php");
+// 一般ユーザーのみアクセス可能
+if ($isAdmin) {
+    header('Location: admin/index.php');
     exit();
 }
 
-$linkId = $_GET['id'];
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $linkId = $_GET['id'] ?? '';
 
-// seisei.jsonの読み込み
-$seiseiData = json_decode(file_get_contents($seiseiFile), true);
-if (!isset($seiseiData[$currentUser][$linkId])) {
-    header("Location: index.php");
-    exit();
-}
-
-// リンク削除処理
-unset($seiseiData[$currentUser][$linkId]);
-file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-// リンクフォルダの削除
-$dirPath = $baseDir . '/../' . $linkId;
-if (is_dir($dirPath)) {
-    // index.phpを削除
-    if (file_exists($dirPath . '/index.php')) {
-        unlink($dirPath . '/index.php');
+    if (empty($linkId)) {
+        header('Location: index.php');
+        exit();
     }
-    // ディレクトリの削除
-    rmdir($dirPath);
+
+    $seisei = json_decode(file_get_contents('data/seisei.json'), true);
+    if (isset($seisei[$linkId]) && $seisei[$linkId]['user'] === $username) {
+        // リンクの削除
+        unset($seisei[$linkId]);
+        file_put_contents('data/seisei.json', json_encode($seisei, JSON_PRETTY_PRINT));
+
+        // フォルダの削除
+        $dirPath = $linkId;
+        if (is_dir($dirPath)) {
+            // ファイルを削除してからフォルダを削除
+            $files = glob($dirPath . '/*');
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            rmdir($dirPath);
+        }
+
+        // ログ記録
+        $logs = json_decode(file_get_contents('data/logs.json'), true);
+        $logs[] = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'user' => $username,
+            'action' => 'リンク削除: ' . $linkId
+        ];
+        file_put_contents('data/logs.json', json_encode($logs, JSON_PRETTY_PRINT));
+
+        header('Location: index.php');
+        exit();
+    } else {
+        header('Location: index.php');
+        exit();
+    }
+} else {
+    header('Location: index.php');
+    exit();
 }
-
-// ログの記録
-$logs = json_decode(file_get_contents($logsFile), true);
-$logs[] = [
-    "user" => $currentUser,
-    "action" => "deleted_link",
-    "link_id" => $linkId,
-    "timestamp" => date("Y-m-d H:i:s")
-];
-file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-header("Location: index.php");
-exit();
 ?>
