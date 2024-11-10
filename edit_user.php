@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $users = json_decode(file_get_contents('../data/users.json'), true);
 
     if (isset($users[$username])) {
-        $users[$username]['password'] = password_hash($newPassword, PASSWORD_BCRYPT);
+        $users[$username]['password'] = $newPassword; // 平文で管理
         $users[$username]['force_reset'] = true;
         file_put_contents('../data/users.json', json_encode($users, JSON_PRETTY_PRINT));
 
