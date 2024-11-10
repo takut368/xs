@@ -12,29 +12,25 @@ function autoCreateFilesAndFolders() {
     }
 
     // 初期データファイルの作成
-    $usersFile = 'data/users.json';
-    if (!file_exists($usersFile)) {
-        $initialUsers = [
+    $dataFiles = [
+        'data/users.json' => json_encode([
             'admin' => [
                 'password' => 'admin', // 平文で管理
                 'force_reset' => false
             ]
-        ];
-        file_put_contents($usersFile, json_encode($initialUsers, JSON_PRETTY_PRINT));
-    }
+        ], JSON_PRETTY_PRINT),
+        'data/seisei.json' => json_encode([], JSON_PRETTY_PRINT),
+        'data/logs.json' => json_encode([], JSON_PRETTY_PRINT)
+    ];
 
-    $seiseiFile = 'data/seisei.json';
-    if (!file_exists($seiseiFile)) {
-        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT));
-    }
-
-    $logsFile = 'data/logs.json';
-    if (!file_exists($logsFile)) {
-        file_put_contents($logsFile, json_encode([], JSON_PRETTY_PRINT));
+    foreach ($dataFiles as $file => $content) {
+        if (!file_exists($file)) {
+            file_put_contents($file, $content);
+        }
     }
 
     // 初期テンプレート画像の確認（既に配置されている前提）
-    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png', 'saisei_button.png'];
+    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
     foreach ($templateImages as $image) {
         if (!file_exists('temp/' . $image)) {
             // ダミー画像を作成（実際には適切なテンプレート画像を配置してください）
@@ -82,16 +78,18 @@ if (!isset($_SESSION['username']) || $_SESSION['username'] !== 'admin') {
     exit();
 }
 
-// ユーザー管理処理
 $adminErrors = [];
-$adminSuccess = false;
+$adminSuccess = '';
 
 // ユーザー作成
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
     $newUsername = trim($_POST['new_username']);
     $newPassword = $_POST['new_password'];
 
-    if (empty($newUsername) || empty($newPassword)) {
+    // 管理者のIDとパスワードは変更できない
+    if ($newUsername === 'admin') {
+        $adminErrors[] = '管理者ユーザーは作成できません。';
+    } elseif (empty($newUsername) || empty($newPassword)) {
         $adminErrors[] = 'ユーザーIDとパスワードを入力してください。';
     } else {
         $users = loadData('data/users.json');
@@ -128,12 +126,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user'])) {
     }
 }
 
-// ユーザー編集
+// ユーザー編集（パスワード変更）
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
     $editUsername = $_POST['edit_username'];
     $editPassword = $_POST['edit_password'];
 
-    if (empty($editPassword)) {
+    if ($editUsername === 'admin') {
+        $adminErrors[] = '管理者ユーザーのパスワードは変更できません。';
+    } elseif (empty($editPassword)) {
         $adminErrors[] = '新しいパスワードを入力してください。';
     } else {
         $users = loadData('data/users.json');
@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
             $users[$editUsername]['force_reset'] = true; // 次回ログイン時にパスワード変更を要求
             saveData('data/users.json', $users);
             $adminSuccess = 'ユーザーのパスワードを更新しました。';
-            logAction('ユーザー編集: ' . $editUsername, 'admin');
+            logAction('ユーザー編集（パスワード更新）: ' . $editUsername, 'admin');
         } else {
             $adminErrors[] = '指定されたユーザーが存在しません。';
         }
@@ -154,7 +154,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_password'])) {
     $resetUsername = $_POST['reset_username'];
     $newPassword = $_POST['reset_password'];
 
-    if (empty($newPassword)) {
+    if ($resetUsername === 'admin') {
+        $adminErrors[] = '管理者ユーザーのパスワードはリセットできません。';
+    } elseif (empty($newPassword)) {
         $adminErrors[] = '新しいパスワードを入力してください。';
     } else {
         $users = loadData('data/users.json');
@@ -249,8 +251,8 @@ $logs = loadData('data/logs.json');
             padding: 15px;
             margin-top: 20px;
             cursor: pointer;
-            transition: transform 0.2s, background 0.3s;
             width: 100%;
+            transition: transform 0.2s, background 0.3s;
         }
         button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
@@ -408,7 +410,25 @@ $logs = loadData('data/logs.json');
                 button.addEventListener('click', function() {
                     const username = this.dataset.username;
                     if (confirm('本当にユーザー「' + username + '」を削除しますか？')) {
-                        window.location.href = 'delete_user.php?username=' + encodeURIComponent(username);
+                        // フォーム送信ではなく、POSTリクエストを送信する
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '';
+
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'delete_user';
+                        input.value = '1';
+                        form.appendChild(input);
+
+                        const userInput = document.createElement('input');
+                        userInput.type = 'hidden';
+                        userInput.name = 'delete_username';
+                        userInput.value = username;
+                        form.appendChild(userInput);
+
+                        document.body.appendChild(form);
+                        form.submit();
                     }
                 });
             });
@@ -463,7 +483,7 @@ $logs = loadData('data/logs.json');
                 <input type="text" id="new_username" name="new_username" required>
 
                 <label for="new_password">新規ユーザーパスワード</label>
-                <input type="text" id="new_password" name="new_password" required>
+                <input type="password" id="new_password" name="new_password" required>
 
                 <button type="submit" name="create_user">ユーザー作成</button>
             </form>
@@ -511,7 +531,6 @@ $logs = loadData('data/logs.json');
                     </thead>
                     <tbody>
                         <?php
-                        $logs = loadData('data/logs.json');
                         rsort($logs); // 最新のログを上に
                         foreach ($logs as $log):
                         ?>
@@ -536,10 +555,11 @@ $logs = loadData('data/logs.json');
             <div class="modal-content">
                 <span class="close" id="editClose">&times;</span>
                 <h2>ユーザー編集</h2>
-                <form method="POST" action="edit_user.php">
-                    <input type="hidden" name="username" id="edit_username">
+                <form method="POST">
+                    <input type="hidden" name="edit_user" value="1">
+                    <input type="hidden" name="edit_username" id="edit_username">
                     <label for="edit_password">新しいパスワード</label>
-                    <input type="text" id="edit_password" name="edit_password" required>
+                    <input type="password" id="edit_password" name="edit_password" required>
                     <button type="submit">パスワード更新</button>
                 </form>
             </div>
@@ -550,10 +570,11 @@ $logs = loadData('data/logs.json');
             <div class="modal-content">
                 <span class="close" id="resetClose">&times;</span>
                 <h2>パスワードリセット</h2>
-                <form method="POST" action="reset_password.php">
-                    <input type="hidden" name="username" id="reset_username">
+                <form method="POST">
+                    <input type="hidden" name="reset_password" value="1">
+                    <input type="hidden" name="reset_username" id="reset_username">
                     <label for="reset_password">新しいパスワード</label>
-                    <input type="text" id="reset_password" name="reset_password" required>
+                    <input type="password" id="reset_password" name="reset_password" required>
                     <button type="submit">パスワードリセット</button>
                 </form>
             </div>
