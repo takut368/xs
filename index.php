@@ -1,351 +1,274 @@
 <?php
-// セッションの開始
+// セッションの開始は一番最初に行う必要があります
 session_start();
 
-// 自動作成するディレクトリとファイルのパス
-$baseDir = __DIR__;
-$dataDir = $baseDir . '/data';
-$uploadsDir = $baseDir . '/uploads';
-$tempDir = $baseDir . '/temp';
-$usersFile = $dataDir . '/users.json';
-$seiseiFile = $dataDir . '/seisei.json';
-$logsFile = $dataDir . '/logs.json';
-
-// 必要なディレクトリとファイルの存在確認と自動作成
-function initializeDirectoriesAndFiles($dataDir, $uploadsDir, $tempDir, $usersFile, $seiseiFile, $logsFile) {
-    if (!file_exists($dataDir)) {
-        mkdir($dataDir, 0777, true);
+// 自動作成関数
+function autoCreateFilesAndFolders() {
+    $folders = ['uploads', 'temp', 'data', 'backup'];
+    foreach ($folders as $folder) {
+        if (!is_dir($folder)) {
+            mkdir($folder, 0755, true);
+        }
     }
 
-    if (!file_exists($uploadsDir)) {
-        mkdir($uploadsDir, 0777, true);
-    }
-
-    if (!file_exists($tempDir)) {
-        mkdir($tempDir, 0777, true);
-    }
-
-    if (!file_exists($usersFile)) {
-        file_put_contents($usersFile, json_encode([
-            "admin" => [
-                "password" => password_hash("admin", PASSWORD_DEFAULT),
-                "is_admin" => true,
-                "force_password_change" => false
+    // 初期データファイルの作成
+    $dataFiles = [
+        'data/users.json' => json_encode([
+            'admin' => [
+                'password' => password_hash('admin', PASSWORD_BCRYPT),
+                'force_reset' => false
             ]
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        ], JSON_PRETTY_PRINT),
+        'data/seisei.json' => json_encode([], JSON_PRETTY_PRINT),
+        'data/logs.json' => json_encode([], JSON_PRETTY_PRINT)
+    ];
+
+    foreach ($dataFiles as $file => $content) {
+        if (!file_exists($file)) {
+            file_put_contents($file, $content);
+        }
     }
 
-    if (!file_exists($seiseiFile)) {
-        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
-
-    if (!file_exists($logsFile)) {
-        file_put_contents($logsFile, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    // 初期テンプレート画像の確認（既に配置されている前提）
+    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png', 'saisei_button.png'];
+    foreach ($templateImages as $image) {
+        if (!file_exists('temp/' . $image)) {
+            // ダミー画像を作成（実際には適切なテンプレート画像を配置してください）
+            $img = imagecreatetruecolor(400, 200);
+            $bgColor = imagecolorallocate($img, 50, 50, 50);
+            imagefilledrectangle($img, 0, 0, 400, 200, $bgColor);
+            imagestring($img, 5, 150, 90, $image, imagecolorallocate($img, 255, 255, 255));
+            imagepng($img, 'temp/' . $image);
+            imagedestroy($img);
+        }
     }
 }
 
-initializeDirectoriesAndFiles($dataDir, $uploadsDir, $tempDir, $usersFile, $seiseiFile, $logsFile);
+// 自動作成を実行
+autoCreateFilesAndFolders();
 
-// ユーザー情報の取得
-$users = json_decode(file_get_contents($usersFile), true);
+// ユーザー情報とログを読み込む関数
+function loadData($filename) {
+    if (!file_exists($filename)) {
+        return [];
+    }
+    $data = file_get_contents($filename);
+    return json_decode($data, true);
+}
 
-// エラーメッセージの初期化
+// データ保存関数
+function saveData($filename, $data) {
+    file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
+}
+
+// ログ記録関数
+function logAction($action, $username = 'Guest') {
+    $logs = loadData('data/logs.json');
+    $logs[] = [
+        'timestamp' => date('Y-m-d H:i:s'),
+        'user' => $username,
+        'action' => $action
+    ];
+    saveData('data/logs.json', $logs);
+}
+
+// エラーメッセージ初期化
 $errors = [];
 $success = false;
 $generatedLink = '';
 
-// ログアウト処理
-if (isset($_GET['action']) && $_GET['action'] === 'logout') {
-    // ログアウトログの記録
-    if (isset($_SESSION['user'])) {
-        $log = [
-            "user" => $_SESSION['user'],
-            "action" => "logout",
-            "timestamp" => date("Y-m-d H:i:s")
-        ];
-        $logs = json_decode(file_get_contents($logsFile), true);
-        $logs[] = $log;
-        file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
-    session_unset();
-    session_destroy();
-    // クッキーの削除
-    setcookie("rememberme", "", time() - 3600, "/");
-    header("Location: index.php");
-    exit();
+// 認証チェック
+if (isset($_SESSION['username'])) {
+    $username = $_SESSION['username'];
+    $isAdmin = ($username === 'admin');
+} else {
+    $username = null;
+    $isAdmin = false;
 }
 
 // ログイン処理
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
-    $username = trim($_POST['username']);
-    $password = $_POST['password'];
-    if (isset($users[$username])) {
-        if (password_verify($password, $users[$username]['password'])) {
+    $inputUsername = trim($_POST['username']);
+    $inputPassword = $_POST['password'];
+
+    $users = loadData('data/users.json');
+
+    if (isset($users[$inputUsername])) {
+        if (password_verify($inputPassword, $users[$inputUsername]['password'])) {
             // 認証成功
-            $_SESSION['user'] = $username;
-            // クッキーに保存（30日間）
-            if (isset($_POST['rememberme'])) {
-                setcookie("rememberme", $username, time() + (30 * 24 * 60 * 60), "/");
-            }
-            // ログインログの記録
-            $log = [
-                "user" => $username,
-                "action" => "login",
-                "timestamp" => date("Y-m-d H:i:s")
-            ];
-            $logs = json_decode(file_get_contents($logsFile), true);
-            $logs[] = $log;
-            file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            $_SESSION['username'] = $inputUsername;
 
-            // 初回ログイン時のパスワード変更強制
-            if (isset($users[$username]['force_password_change']) && $users[$username]['force_password_change'] === true) {
-                header("Location: change_password.php");
+            // クッキーに保存（7日間）
+            setcookie('username', $inputUsername, time() + (7 * 24 * 60 * 60), "/");
+
+            logAction('ログイン', $inputUsername);
+
+            if ($inputUsername === 'admin') {
+                header('Location: admin/index.php');
                 exit();
-            }
-
-            // 管理者の場合は管理者ページにリダイレクト
-            if ($users[$username]['is_admin']) {
-                header("Location: admin/index.php");
+            } else {
+                header('Location: index.php');
                 exit();
             }
         } else {
-            $errors[] = "ユーザー名またはパスワードが正しくありません。";
-            // 不正ログイン試行の記録
-            $log = [
-                "user" => $username,
-                "action" => "failed_login",
-                "timestamp" => date("Y-m-d H:i:s")
-            ];
-            $logs = json_decode(file_get_contents($logsFile), true);
-            $logs[] = $log;
-            file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            $errors[] = 'パスワードが間違っています。';
+            logAction('ログイン失敗（パスワード不正）', $inputUsername);
         }
     } else {
-        $errors[] = "ユーザー名またはパスワードが正しくありません。";
-        // 不正ログイン試行の記録
-        $log = [
-            "user" => $username,
-            "action" => "failed_login",
-            "timestamp" => date("Y-m-d H:i:s")
-        ];
-        $logs = json_decode(file_get_contents($logsFile), true);
-        $logs[] = $log;
-        file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $errors[] = 'ユーザーIDが存在しません。';
+        logAction('ログイン失敗（ユーザーID不正）', $inputUsername);
     }
 }
 
-// クッキーからの自動ログイン処理
-if (!isset($_SESSION['user']) && isset($_COOKIE['rememberme'])) {
-    $username = $_COOKIE['rememberme'];
-    if (isset($users[$username])) {
-        $_SESSION['user'] = $username;
-        // ログインログの記録
-        $log = [
-            "user" => $username,
-            "action" => "login_via_cookie",
-            "timestamp" => date("Y-m-d H:i:s")
-        ];
-        $logs = json_decode(file_get_contents($logsFile), true);
-        $logs[] = $log;
-        file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+// クッキーからの自動ログイン
+if (!$username && isset($_COOKIE['username'])) {
+    $cookieUsername = $_COOKIE['username'];
+    $users = loadData('data/users.json');
 
-        // 初回ログイン時のパスワード変更強制
-        if (isset($users[$username]['force_password_change']) && $users[$username]['force_password_change'] === true) {
-            header("Location: change_password.php");
-            exit();
-        }
+    if (isset($users[$cookieUsername])) {
+        $_SESSION['username'] = $cookieUsername;
+        $username = $cookieUsername;
+        $isAdmin = ($username === 'admin');
+        logAction('自動ログイン', $username);
 
-        // 管理者の場合は管理者ページにリダイレクト
-        if ($users[$username]['is_admin']) {
-            header("Location: admin/index.php");
+        if ($username === 'admin') {
+            header('Location: admin/index.php');
             exit();
         }
     }
 }
 
-// ユーザーがログインしている場合のみ以下のコードを実行
-if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
-    $currentUser = $_SESSION['user'];
-    // ユーザーのリンクデータの取得
-    $seiseiData = json_decode(file_get_contents($seiseiFile), true);
-    if (!isset($seiseiData[$currentUser])) {
-        $seiseiData[$currentUser] = [];
+// ユーザーがログインしている場合
+if ($username && !$isAdmin) {
+    // ユーザーが初回ログイン時にパスワード変更が必要な場合
+    $users = loadData('data/users.json');
+    if ($users[$username]['force_reset']) {
+        header('Location: reset_password.php');
+        exit();
     }
 
     // リンク生成処理
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate'])) {
-        $linkA = filter_var($_POST['linkA'], FILTER_SANITIZE_URL);
-        $title = htmlspecialchars(trim($_POST['title']), ENT_QUOTES, 'UTF-8');
-        $description = htmlspecialchars(trim($_POST['description']), ENT_QUOTES, 'UTF-8');
-        $twitterSite = htmlspecialchars(trim($_POST['twitterSite']), ENT_QUOTES, 'UTF-8');
-        $imageAlt = htmlspecialchars(trim($_POST['imageAlt']), ENT_QUOTES, 'UTF-8');
-        $imageOption = $_POST['imageOption'];
+        $linkA = filter_input(INPUT_POST, 'linkA', FILTER_SANITIZE_URL);
+        $title = htmlspecialchars($_POST['title'], ENT_QUOTES, 'UTF-8');
+        $description = htmlspecialchars($_POST['description'] ?? '', ENT_QUOTES, 'UTF-8');
+        $twitterSite = htmlspecialchars($_POST['twitterSite'] ?? '', ENT_QUOTES, 'UTF-8');
+        $imageAlt = htmlspecialchars($_POST['imageAlt'] ?? '', ENT_QUOTES, 'UTF-8');
+        $imageOption = $_POST['imageOption'] ?? '';
         $selectedTemplate = $_POST['selectedTemplate'] ?? '';
+        $editedImageData = $_POST['editedImageData'] ?? '';
 
         // バリデーション
         if (empty($linkA) || !filter_var($linkA, FILTER_VALIDATE_URL)) {
-            $errors[] = "有効な遷移先URLを入力してください。";
+            $errors[] = '有効な遷移先URLを入力してください。';
         }
         if (empty($title)) {
-            $errors[] = "タイトルを入力してください。";
+            $errors[] = 'タイトルを入力してください。';
         }
         if (!in_array($imageOption, ['url', 'upload', 'template'])) {
-            $errors[] = "サムネイル画像の選択方法を選んでください。";
+            $errors[] = 'サムネイル画像の選択方法を選んでください。';
         }
 
-        // 画像処理
-        $imagePath = '';
-        if ($imageOption === 'url') {
-            $imageUrl = filter_var($_POST['imageUrl'], FILTER_SANITIZE_URL);
-            if (empty($imageUrl) || !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                $errors[] = "有効な画像URLを入力してください。";
-            } else {
-                $imageData = file_get_contents_curl($imageUrl);
-                if ($imageData === false) {
-                    $errors[] = "画像を取得できませんでした。";
-                } else {
-                    $imagePath = saveImage($imageData, $uploadsDir);
-                }
-            }
-        } elseif ($imageOption === 'upload') {
-            if (isset($_FILES['imageFile']) && $_FILES['imageFile']['error'] === UPLOAD_ERR_OK) {
-                // ファイルタイプの検証
-                $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                $mime = finfo_file($finfo, $_FILES['imageFile']['tmp_name']);
-                finfo_close($finfo);
-                $allowedMimes = ['image/jpeg', 'image/png', 'image/gif'];
-                if (!in_array($mime, $allowedMimes)) {
-                    $errors[] = "許可されていないファイルタイプです。";
-                } else {
-                    $imageData = file_get_contents($_FILES['imageFile']['tmp_name']);
-                    $imagePath = saveImage($imageData, $uploadsDir);
-                }
-            } else {
-                $errors[] = "画像ファイルのアップロードに失敗しました。";
-            }
-        } elseif ($imageOption === 'template') {
-            $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-            if (!in_array($selectedTemplate, $templateImages)) {
-                $errors[] = "有効なテンプレート画像を選択してください。";
-            } else {
-                $imagePath = $tempDir . '/' . $selectedTemplate;
-            }
-        }
-
-        // 画像編集データの保存
-        if (!empty($_POST['editedImageData'])) {
-            $editedImageData = $_POST['editedImageData'];
-            $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
-            $imagePath = saveImage($imageData, $uploadsDir);
-        }
-
-        if (empty($imagePath)) {
-            $errors[] = "画像の処理に失敗しました。";
-        }
-
-        // リンク生成
+        // サムネイル画像の処理
         if (empty($errors)) {
-            $uniqueId = uniqid();
-            $dirPath = $baseDir . '/' . $uniqueId;
-            if (!mkdir($dirPath, 0777, true)) {
-                $errors[] = "リンク生成用のディレクトリの作成に失敗しました。";
-            } else {
-                $linkFolder = $uniqueId;
-                $linkPath = $linkFolder . '/index.php';
-                $linkUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $linkFolder;
+            $imagePath = '';
 
-                // リダイレクト用のindex.phpを生成
-                $redirectContent = generateRedirectPage($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath);
-                file_put_contents($dirPath . '/index.php', $redirectContent);
+            if ($imageOption === 'template') {
+                // テンプレート画像を使用
+                $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                if (!in_array($selectedTemplate, $templateImages)) {
+                    $errors[] = '有効なテンプレート画像を選択してください。';
+                } else {
+                    $imagePath = 'temp/' . $selectedTemplate;
+                }
+            }
 
-                // seisei.jsonにリンク情報を追加
-                $seiseiData[$currentUser][$uniqueId] = [
-                    "linkA" => $linkA,
-                    "title" => $title,
-                    "description" => $description,
-                    "twitterSite" => $twitterSite,
-                    "imageAlt" => $imageAlt,
-                    "imagePath" => $imagePath,
-                    "created_at" => date("Y-m-d H:i:s")
-                ];
-                file_put_contents($seiseiFile, json_encode($seiseiData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            // 画像編集テンプレートの適用またはクライアント側で処理された画像の保存
+            if (!empty($editedImageData)) {
+                $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
+                $imagePath = saveImage($imageData);
+            }
 
-                $generatedLink = $linkUrl;
-                $success = true;
+            if (empty($imagePath)) {
+                $errors[] = '画像の処理に失敗しました。';
+            }
+
+            // 生成されたリンクの作成
+            if (empty($errors)) {
+                $uniqueDir = uniqid();
+                $dirPath = $uniqueDir;
+                if (!mkdir($dirPath, 0755, true)) {
+                    $errors[] = 'ディレクトリの作成に失敗しました。';
+                } else {
+                    $filePath = $dirPath . '/index.php';
+                    $htmlContent = generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath, $linkA);
+                    file_put_contents($filePath, $htmlContent);
+                    $generatedLink = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $uniqueDir;
+                    $success = true;
+
+                    // seisei.jsonに保存
+                    $seisei = loadData('data/seisei.json');
+                    $seisei[$uniqueDir] = [
+                        'user' => $username,
+                        'linkA' => $linkA,
+                        'title' => $title,
+                        'description' => $description,
+                        'twitterSite' => $twitterSite,
+                        'imageAlt' => $imageAlt,
+                        'imagePath' => $imagePath,
+                        'created_at' => date('Y-m-d H:i:s')
+                    ];
+                    saveData('data/seisei.json', $seisei);
+
+                    logAction('リンク生成', $username);
+                }
             }
         }
     }
 
-    // 画像保存関数
-    function saveImage($imageData, $uploadsDir)
-    {
-        // アップロードファイルのサイズ制限（5MB）
-        if (strlen($imageData) > 5 * 1024 * 1024) {
-            return '';
-        }
-        // ユニークなファイル名の生成
-        $imageName = uniqid() . '.png';
-        $imagePath = $uploadsDir . '/' . $imageName;
-        if (file_put_contents($imagePath, $imageData)) {
-            return 'uploads/' . $imageName;
-        } else {
-            return '';
+    // リンク一覧の取得
+    $seisei = loadData('data/seisei.json');
+    $userLinks = [];
+    foreach ($seisei as $id => $link) {
+        if ($link['user'] === $username) {
+            $userLinks[$id] = $link;
         }
     }
 
-    // 画像取得用のcURL関数
-    function file_get_contents_curl($url)
-    {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        // SSL証明書の検証を有効化（セキュリティ上推奨）
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        $data = curl_exec($ch);
-        curl_close($ch);
-        return $data;
+    // 検索・フィルタリング
+    $search = trim($_GET['search'] ?? '');
+    if ($search !== '') {
+        $filteredLinks = [];
+        foreach ($userLinks as $id => $link) {
+            if (stripos($link['title'], $search) !== false || stripos($link['linkA'], $search) !== false) {
+                $filteredLinks[$id] = $link;
+            }
+        }
+    } else {
+        $filteredLinks = $userLinks;
     }
+}
 
-    // リダイレクトページ生成関数
-    function generateRedirectPage($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath)
-    {
-        $baseUrl = 'https://' . $_SERVER['HTTP_HOST'];
-        $imageUrl = $baseUrl . '/' . $imagePath;
-        $metaDescription = !empty($description) ? $description : $title;
-        $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . htmlspecialchars($twitterSite, ENT_QUOTES, 'UTF-8') . '">' : '';
-        $imageAltTag = !empty($imageAlt) ? htmlspecialchars($imageAlt, ENT_QUOTES, 'UTF-8') : htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+// HTMLコンテンツ生成関数（リダイレクト用）
+function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath, $redirectURL) {
+    $imageUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/' . $imagePath;
+    $metaDescription = !empty($description) ? $description : $title;
+    $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . $twitterSite . '">' : '';
+    $imageAltTag = !empty($imageAlt) ? $imageAlt : $title;
 
-        $html = '<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</title>
-    <meta name="description" content="' . htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') . '">
-    <meta http-equiv="refresh" content="0; URL=' . htmlspecialchars($linkA, ENT_QUOTES, 'UTF-8') . '">
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    ' . $twitterSiteTag . '
-    <meta name="twitter:title" content="' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '">
-    <meta name="twitter:description" content="' . htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') . '">
-    <meta name="twitter:image" content="' . $imageUrl . '">
-    <meta name="twitter:image:alt" content="' . $imageAltTag . '">
-</head>
-<body>
-    <p>リダイレクト中...</p>
-</body>
-</html>';
+    $html = '<?php
+    header("Location: ' . htmlspecialchars($redirectURL, ENT_QUOTES, 'UTF-8') . '");
+    exit();
+    ?>';
 
-        return $html;
-    }
-
-// HTMLコンテンツ
+    return $html;
+}
 ?>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>サムネイル付きリンク生成サービス - ログイン</title>
+    <title>サムネイル付きリンク生成サービス</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* リセットCSS */
@@ -359,26 +282,24 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             background-color: #121212;
             color: #ffffff;
             font-family: 'Helvetica Neue', Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-            overflow: hidden;
+            overflow-x: hidden;
         }
         .container {
-            width: 100%;
-            max-width: 400px;
+            max-width: 800px;
+            margin: 0 auto;
             padding: 20px;
-            background-color: #1e1e1e;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            animation: fadeInUp 0.5s;
+            animation: fadeIn 1s ease-in-out;
         }
         h1 {
             text-align: center;
             margin-bottom: 20px;
-            font-size: 24px;
+        }
+        form {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            animation: slideIn 0.5s;
         }
         label {
             display: block;
@@ -387,7 +308,6 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             font-size: 16px;
         }
         input[type="text"],
-        input[type="password"],
         input[type="url"],
         textarea {
             width: 100%;
@@ -401,7 +321,6 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             transition: background-color 0.3s;
         }
         input[type="text"]:focus,
-        input[type="password"]:focus,
         input[type="url"]:focus,
         textarea:focus {
             background-color: #3a3a3a;
@@ -417,7 +336,7 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             margin-top: 20px;
             cursor: pointer;
             width: 100%;
-            transition: transform 0.2s;
+            transition: transform 0.2s, background 0.3s;
         }
         button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
@@ -426,9 +345,8 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
         .error {
             color: #ff5252;
             font-size: 14px;
-            margin-top: 10px;
-            text-align: center;
             animation: shake 0.5s;
+            margin-top: 10px;
         }
         .success-message {
             background-color: #1e1e1e;
@@ -437,69 +355,37 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             padding: 15px;
             margin-top: 20px;
             animation: fadeInUp 0.5s;
+            text-align: center;
         }
-        /* アニメーション */
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes shake {
-            0% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            50% { transform: translateX(5px); }
-            75% { transform: translateX(-5px); }
-            100% { transform: translateX(0); }
-        }
-        /* クッキー保存用 */
-        .rememberme {
+        .success-message input[type="text"] {
+            width: 70%;
             margin-top: 10px;
-            display: flex;
-            align-items: center;
-        }
-        .rememberme input {
-            margin-right: 5px;
-        }
-        /* リンク生成フォーム */
-        .link-form {
-            display: none;
-            margin-top: 20px;
-        }
-        /* リンク一覧 */
-        .link-list {
-            margin-top: 20px;
-        }
-        .link-item {
+            display: inline-block;
             background-color: #2a2a2a;
-            padding: 10px;
+            border: none;
             border-radius: 5px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            padding: 10px;
+        }
+        .success-message button {
+            width: 25%;
+            margin-left: 5%;
+            display: inline-block;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
             transition: background-color 0.3s;
         }
-        .link-item:hover {
-            background-color: #3a3a3a;
+        .success-message button:hover {
+            background-color: #45a049;
         }
-        .link-actions button {
-            margin-left: 5px;
-            padding: 5px 10px;
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
-            border-radius: 3px;
-        }
-        .link-actions button.view {
-            background-color: #4caf50;
-            color: #fff;
-        }
-        .link-actions button.edit {
-            background-color: #2196f3;
-            color: #fff;
-        }
-        .link-actions button.delete {
-            background-color: #f44336;
-            color: #fff;
+        .preview-image {
+            max-width: 100%;
+            border-radius: 5px;
+            margin-top: 20px;
+            animation: fadeIn 0.5s;
         }
         /* モーダルスタイル */
         .modal {
@@ -569,15 +455,24 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             from { opacity: 0; }
             to { opacity: 1; }
         }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         @keyframes scaleUp {
             from { transform: scale(0.8); }
             to { transform: scale(1); }
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
         /* 画像選択ボタンのスタイル */
         .image-option-buttons {
             display: flex;
             flex-wrap: wrap;
             margin-top: 10px;
+            gap: 10px;
         }
         .image-option-button {
             background: linear-gradient(to right, #00e5ff, #00b0ff);
@@ -586,11 +481,10 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             border-radius: 5px;
             font-size: 14px;
             padding: 10px;
-            margin: 5px;
             cursor: pointer;
             flex: 1;
             text-align: center;
-            transition: transform 0.2s;
+            transition: transform 0.2s, background 0.3s;
         }
         .image-option-button:hover {
             background: linear-gradient(to right, #00b0ff, #00e5ff);
@@ -599,22 +493,21 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
         .image-option-button.active {
             background: #00e5ff;
         }
-        /* ボタン間隔の調整 */
-        .image-option-buttons .image-option-button {
-            margin: 5px;
-        }
         /* メディアクエリ */
         @media screen and (max-width: 600px) {
-            .container {
-                height: 100vh;
-                overflow-y: auto;
+            .success-message input[type="text"] {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .success-message button {
+                width: 100%;
+                margin-left: 0;
+            }
+            .image-option-buttons {
+                flex-direction: column;
             }
             .image-option-button {
                 flex: 1 1 100%;
-            }
-            .link-actions button {
-                margin-left: 0;
-                margin-top: 5px;
             }
         }
     </style>
@@ -652,7 +545,7 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             const detailsButton = document.getElementById('toggleDetails');
             const detailsSection = document.getElementById('detailsSection');
             detailsButton.addEventListener('click', function() {
-                if (detailsSection.style.display === 'none' || detailsSection.style.display === '') {
+                if (detailsSection.style.display === 'none') {
                     detailsSection.style.display = 'block';
                 } else {
                     detailsSection.style.display = 'none';
@@ -743,13 +636,11 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
             templateClose.addEventListener('click', function() {
                 templateModal.style.display = 'none';
             });
-
             window.addEventListener('click', function(event) {
                 if (event.target == templateModal) {
                     templateModal.style.display = 'none';
                 }
             });
-
             templateItems.forEach(item => {
                 item.addEventListener('click', function() {
                     const radio = this.querySelector('input[type="radio"]');
@@ -767,52 +658,50 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
                     // サーバーに送信するselectedTemplateの値を設定
                     document.getElementById('selectedTemplateInput').value = radio.value;
                 });
-            });
+            }
 
+            // セッションタイムアウト（30分）
+            setInterval(function() {
+                const now = new Date().getTime();
+                const timeout = 30 * 60 * 1000; // 30分
+                if (sessionStorage.getItem('lastActivity')) {
+                    const lastActivity = parseInt(sessionStorage.getItem('lastActivity'));
+                    if (now - lastActivity > timeout) {
+                        alert('セッションがタイムアウトしました。再度ログインしてください。');
+                        window.location.href = 'logout.php';
+                    }
+                }
+                sessionStorage.setItem('lastActivity', now);
+            }, 5 * 60 * 1000); // チェックは5分ごと
         });
     </script>
 </head>
 <body>
     <div class="container">
         <h1>サムネイル付きリンク生成サービス</h1>
-        <?php if (!empty($errors)): ?>
-            <div class="error">
-                <?php foreach ($errors as $error): ?>
-                    <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($success): ?>
-            <div class="success-message">
-                <p>リンクが生成されました：</p>
-                <input type="text" id="generatedLink" value="<?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?>" readonly>
-                <button id="copyButton">コピー</button>
-                <p>保存しない場合、再度登録が必要です。</p>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!isset($_SESSION['user'])): ?>
+        <?php if (!isset($_SESSION['username'])): ?>
             <!-- ログインフォーム -->
             <form method="POST">
-                <label>ユーザー名</label>
-                <input type="text" name="username" required>
+                <input type="hidden" name="login" value="1">
+                <label for="username">ユーザーID</label>
+                <input type="text" id="username" name="username" required>
 
-                <label>パスワード</label>
-                <input type="password" name="password" required>
+                <label for="password">パスワード</label>
+                <input type="password" id="password" name="password" required>
 
-                <div class="rememberme">
-                    <input type="checkbox" name="rememberme" id="rememberme">
-                    <label for="rememberme">ログイン状態を保持する</label>
-                </div>
-
-                <button type="submit" name="login">ログイン</button>
+                <button type="submit">ログイン</button>
             </form>
-        <?php else: ?>
-            <!-- リンク生成フォーム -->
+            <?php if (!empty($errors)): ?>
+                <div class="error">
+                    <?php foreach ($errors as $error): ?>
+                        <p><?php echo $error; ?></p>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        <?php elseif (!$isAdmin): ?>
+            <!-- 一般ユーザーのリンク生成・管理 -->
             <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" id="editedImageData" name="editedImageData">
+                <input type="hidden" name="generate" value="1">
                 <input type="hidden" id="imageOptionInput" name="imageOption" required>
                 <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
 
@@ -826,6 +715,8 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
                 <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="url">画像URLを入力</button>
                     <button type="button" class="image-option-button" data-option="upload">画像ファイルをアップロード</button>
+                </div>
+                <div class="image-option-buttons">
                     <button type="button" class="image-option-button" data-option="template">テンプレートから選択</button>
                 </div>
 
@@ -837,25 +728,6 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
                 <div id="imageFileInput" style="display:none;">
                     <label>画像ファイルをアップロード</label>
                     <input type="file" name="imageFile" accept="image/*">
-                </div>
-
-                <!-- テンプレート選択モーダル -->
-                <div id="templateModal" class="modal">
-                    <div class="modal-content">
-                        <span class="close" id="templateClose">&times;</span>
-                        <h2>テンプレートを選択</h2>
-                        <div class="template-grid">
-                            <?php
-                            $templates = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                            foreach ($templates as $template):
-                            ?>
-                                <div class="template-item">
-                                    <img src="<?php echo htmlspecialchars($tempDir . '/' . $template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
                 </div>
 
                 <button type="button" id="toggleDetails">詳細設定</button>
@@ -870,32 +742,67 @@ if (isset($_SESSION['user']) && !$users[$_SESSION['user']]['is_admin']) {
                     <input type="text" name="imageAlt">
                 </div>
 
-                <button type="submit" name="generate">リンクを生成</button>
+                <button type="submit">リンクを生成</button>
             </form>
 
-            <!-- ユーザーのリンク一覧 -->
-            <div class="link-list">
-                <h2>生成したリンク一覧</h2>
-                <?php if (!empty($seiseiData[$currentUser])): ?>
-                    <?php foreach ($seiseiData[$currentUser] as $id => $link): ?>
-                        <div class="link-item">
-                            <div>
-                                <a href="<?php echo htmlspecialchars('https://' . $_SERVER['HTTP_HOST'] . '/' . $id, ENT_QUOTES, 'UTF-8'); ?>" target="_blank"><?php echo htmlspecialchars($link['title'], ENT_QUOTES, 'UTF-8'); ?></a>
-                            </div>
-                            <div class="link-actions">
-                                <button class="view" onclick="window.open('<?php echo htmlspecialchars('https://' . $_SERVER['HTTP_HOST'] . '/' . $id, ENT_QUOTES, 'UTF-8'); ?>', '_blank')">表示</button>
-                                <button class="edit" onclick="window.location.href='edit_link.php?id=<?php echo urlencode($id); ?>'">編集</button>
-                                <button class="delete" onclick="if(confirm('本当に削除しますか？')){ window.location.href='delete_link.php?id=<?php echo urlencode($id); ?>' }">削除</button>
-                            </div>
-                        </div>
+            <?php if ($success): ?>
+                <div class="success-message">
+                    <p>リンクが生成されました：</p>
+                    <input type="text" id="generatedLink" value="<?php echo $generatedLink; ?>" readonly>
+                    <button id="copyButton">コピー</button>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($errors)): ?>
+                <div class="error">
+                    <?php foreach ($errors as $error): ?>
+                        <p><?php echo $error; ?></p>
                     <?php endforeach; ?>
-                <?php else: ?>
-                    <p>まだリンクが生成されていません。</p>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- リンク一覧 -->
+            <h2 style="margin-top: 40px; text-align: center;">生成したリンク一覧</h2>
+            <form method="GET">
+                <input type="text" name="search" placeholder="タイトルまたはURLで検索" value="<?php echo htmlspecialchars($search); ?>">
+                <button type="submit">検索</button>
+            </form>
+            <table border="1" cellpadding="10" cellspacing="0" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>タイトル</th>
+                        <th>URL</th>
+                        <th>生成日時</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($filteredLinks)): ?>
+                        <tr>
+                            <td colspan="5" style="text-align: center;">リンクがありません。</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($filteredLinks as $id => $link): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($id); ?></td>
+                                <td><?php echo htmlspecialchars($link['title']); ?></td>
+                                <td><a href="<?php echo htmlspecialchars($link['linkA']); ?>" target="_blank">遷移先URL</a></td>
+                                <td><?php echo htmlspecialchars($link['created_at']); ?></td>
+                                <td>
+                                    <a href="edit_link.php?id=<?php echo urlencode($id); ?>" style="color: #4CAF50;">編集</a> |
+                                    <a href="delete_link.php?id=<?php echo urlencode($id); ?>" style="color: #f44336;" onclick="return confirm('本当に削除しますか？');">削除</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
 
             <!-- ログアウトボタン -->
-            <a href="index.php?action=logout"><button type="button" style="background: #ff5252;">ログアウト</button></a>
+            <form method="POST" action="logout.php">
+                <button type="submit" style="background-color: #f44336;">ログアウト</button>
+            </form>
         <?php endif; ?>
     </div>
 </body>
