@@ -12,21 +12,25 @@ function autoCreateFilesAndFolders() {
     }
 
     // 初期データファイルの作成
-    $dataFiles = [
-        'data/users.json' => json_encode([
+    $usersFile = 'data/users.json';
+    if (!file_exists($usersFile)) {
+        $initialUsers = [
             'admin' => [
-                'password' => password_hash('admin', PASSWORD_BCRYPT),
+                'password' => 'admin', // 平文で管理
                 'force_reset' => false
             ]
-        ], JSON_PRETTY_PRINT),
-        'data/seisei.json' => json_encode([], JSON_PRETTY_PRINT),
-        'data/logs.json' => json_encode([], JSON_PRETTY_PRINT)
-    ];
+        ];
+        file_put_contents($usersFile, json_encode($initialUsers, JSON_PRETTY_PRINT));
+    }
 
-    foreach ($dataFiles as $file => $content) {
-        if (!file_exists($file)) {
-            file_put_contents($file, $content);
-        }
+    $seiseiFile = 'data/seisei.json';
+    if (!file_exists($seiseiFile)) {
+        file_put_contents($seiseiFile, json_encode([], JSON_PRETTY_PRINT));
+    }
+
+    $logsFile = 'data/logs.json';
+    if (!file_exists($logsFile)) {
+        file_put_contents($logsFile, json_encode([], JSON_PRETTY_PRINT));
     }
 
     // 初期テンプレート画像の確認（既に配置されている前提）
@@ -95,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
             $adminErrors[] = '既に存在するユーザーIDです。';
         } else {
             $users[$newUsername] = [
-                'password' => password_hash($newPassword, PASSWORD_BCRYPT),
+                'password' => $newPassword, // 平文で管理
                 'force_reset' => true
             ];
             saveData('data/users.json', $users);
@@ -134,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
     } else {
         $users = loadData('data/users.json');
         if (isset($users[$editUsername])) {
-            $users[$editUsername]['password'] = password_hash($editPassword, PASSWORD_BCRYPT);
+            $users[$editUsername]['password'] = $editPassword; // 平文で管理
             $users[$editUsername]['force_reset'] = true; // 次回ログイン時にパスワード変更を要求
             saveData('data/users.json', $users);
             $adminSuccess = 'ユーザーのパスワードを更新しました。';
@@ -155,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_password'])) {
     } else {
         $users = loadData('data/users.json');
         if (isset($users[$resetUsername])) {
-            $users[$resetUsername]['password'] = password_hash($newPassword, PASSWORD_BCRYPT);
+            $users[$resetUsername]['password'] = $newPassword; // 平文で管理
             $users[$resetUsername]['force_reset'] = true;
             saveData('data/users.json', $users);
             $adminSuccess = 'ユーザーのパスワードをリセットしました。';
@@ -459,7 +463,7 @@ $logs = loadData('data/logs.json');
                 <input type="text" id="new_username" name="new_username" required>
 
                 <label for="new_password">新規ユーザーパスワード</label>
-                <input type="password" id="new_password" name="new_password" required>
+                <input type="text" id="new_password" name="new_password" required>
 
                 <button type="submit" name="create_user">ユーザー作成</button>
             </form>
@@ -535,7 +539,7 @@ $logs = loadData('data/logs.json');
                 <form method="POST" action="edit_user.php">
                     <input type="hidden" name="username" id="edit_username">
                     <label for="edit_password">新しいパスワード</label>
-                    <input type="password" id="edit_password" name="edit_password" required>
+                    <input type="text" id="edit_password" name="edit_password" required>
                     <button type="submit">パスワード更新</button>
                 </form>
             </div>
@@ -549,7 +553,7 @@ $logs = loadData('data/logs.json');
                 <form method="POST" action="reset_password.php">
                     <input type="hidden" name="username" id="reset_username">
                     <label for="reset_password">新しいパスワード</label>
-                    <input type="password" id="reset_password" name="reset_password" required>
+                    <input type="text" id="reset_password" name="reset_password" required>
                     <button type="submit">パスワードリセット</button>
                 </form>
             </div>
