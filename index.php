@@ -204,6 +204,13 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
     $twitterSiteTag = !empty($twitterSite) ? '<meta name="twitter:site" content="' . $twitterSite . '">' : '';
     $imageAltTag = !empty($imageAlt) ? $imageAlt : $title;
 
+    $html = '<?php
+    header("Location: ' . htmlspecialchars($linkA, ENT_QUOTES, 'UTF-8') . '");
+    exit();
+    ?>';
+    
+    // Alternatively, if you want to use meta refresh
+    /*
     $html = '<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -223,6 +230,7 @@ function generateHtmlContent($linkA, $title, $description, $twitterSite, $imageA
     <p>リダイレクト中...</p>
 </body>
 </html>';
+    */
 
     return $html;
 }
@@ -468,6 +476,9 @@ function logAction($user, $action, $detail = '')
             .image-option-button {
                 flex: 1 1 100%;
             }
+            .image-option-buttons {
+                gap: 5px;
+            }
         }
     </style>
     <script>
@@ -503,7 +514,7 @@ function logAction($user, $action, $detail = '')
             const detailsButton = document.getElementById('toggleDetails');
             const detailsSection = document.getElementById('detailsSection');
             detailsButton.addEventListener('click', function() {
-                if (detailsSection.style.display === 'none') {
+                if (detailsSection.style.display === 'none' || detailsSection.style.display === '') {
                     detailsSection.style.display = 'block';
                 } else {
                     detailsSection.style.display = 'none';
@@ -619,9 +630,11 @@ function logAction($user, $action, $detail = '')
             });
 
             // 初回アクセス時にid=123がない場合は画面を真っ白にする
-            if (!window.location.search.includes('id=123') && !<?php echo isset($_SESSION['user']) ? 'true' : 'false'; ?>) {
-                document.body.innerHTML = '';
-            }
+            <?php if (!isset($_SESSION['user'])): ?>
+                if (!window.location.search.includes('id=123')) {
+                    document.body.innerHTML = '';
+                }
+            <?php endif; ?>
         });
     </script>
 </head>
@@ -632,12 +645,12 @@ function logAction($user, $action, $detail = '')
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
             <form method="POST">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
                 <label>ユーザーID</label>
                 <input type="text" name="username" required>
                 <label>パスワード</label>
@@ -652,7 +665,7 @@ function logAction($user, $action, $detail = '')
             <?php if ($success): ?>
                 <div class="success-message">
                     <p>リンクが生成されました：</p>
-                    <input type="text" id="generatedLink" value="<?php echo $generatedLink; ?>" readonly>
+                    <input type="text" id="generatedLink" value="<?php echo htmlspecialchars($generatedLink, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                     <button id="copyButton">コピー</button>
                     <p>保存しない場合、再度登録が必要です。</p>
                 </div>
@@ -660,12 +673,12 @@ function logAction($user, $action, $detail = '')
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
             <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8'); ?>">
                 <input type="hidden" id="editedImageData" name="editedImageData">
                 <input type="hidden" id="imageOptionInput" name="imageOption" required>
                 <input type="hidden" id="selectedTemplateInput" name="selectedTemplate">
@@ -721,8 +734,8 @@ function logAction($user, $action, $detail = '')
                 foreach ($templates as $template):
                 ?>
                     <div class="template-item">
-                        <img src="temp/<?php echo $template; ?>" alt="<?php echo $template; ?>">
-                        <input type="radio" name="templateRadio" value="<?php echo $template; ?>">
+                        <img src="temp/<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="radio" name="templateRadio" value="<?php echo htmlspecialchars($template, ENT_QUOTES, 'UTF-8'); ?>">
                     </div>
                 <?php endforeach; ?>
             </div>
