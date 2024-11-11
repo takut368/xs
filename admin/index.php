@@ -183,64 +183,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $errors[] = 'ユーザーが見つかりません。';
             }
         }
-    }
-}
 
-// バックアップ機能
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'backup') {
-    // CSRFトークンチェック
-    if (!isset($_POST['token']) || !hash_equals($_SESSION['token'], $_POST['token'])) {
-        $errors[] = '不正なリクエストです。';
-    } else {
-        // バックアップファイル名
-        $backup_name = 'backup_' . date('Ymd_His') . '.zip';
-        $backup_path = LOGS_DIR . $backup_name;
+        if ($action === 'backup') {
+            // バックアップファイル名
+            $backup_name = 'backup_' . date('Ymd_His') . '.zip';
+            $backup_path = LOGS_DIR . $backup_name;
 
-        // ZIPアーカイブ作成
-        $zip = new ZipArchive();
-        if ($zip->open($backup_path, ZipArchive::CREATE) === TRUE) {
-            // ファイルの追加
-            $zip->addFile(USERS_FILE, 'users.json');
-            $zip->addFile(LINKS_FILE, 'links.json');
-            // uploads フォルダ
-            $files = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(UPLOADS_DIR),
-                RecursiveIteratorIterator::LEAVES_ONLY
-            );
-            foreach ($files as $name => $file) {
-                if (!$file->isDir()) {
-                    $filePath = $file->getRealPath();
-                    $relativePath = 'uploads/' . substr($filePath, strlen(__DIR__ . '/../uploads/'));
-                    $zip->addFile($filePath, $relativePath);
+            // ZIPアーカイブ作成
+            $zip = new ZipArchive();
+            if ($zip->open($backup_path, ZipArchive::CREATE) === TRUE) {
+                // ファイルの追加
+                $zip->addFile(USERS_FILE, 'users.json');
+                $zip->addFile(LINKS_FILE, 'links.json');
+                // uploads フォルダ
+                $files = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator(UPLOADS_DIR),
+                    RecursiveIteratorIterator::LEAVES_ONLY
+                );
+                foreach ($files as $name => $file) {
+                    if (!$file->isDir()) {
+                        $filePath = $file->getRealPath();
+                        $relativePath = 'uploads/' . substr($filePath, strlen(__DIR__ . '/../uploads/'));
+                        $zip->addFile($filePath, $relativePath);
+                    }
                 }
-            }
-            // templates フォルダ
-            $files = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(TEMPLATES_DIR),
-                RecursiveIteratorIterator::LEAVES_ONLY
-            );
-            foreach ($files as $name => $file) {
-                if (!$file->isDir()) {
-                    $filePath = $file->getRealPath();
-                    $relativePath = 'templates/' . substr($filePath, strlen(__DIR__ . '/../templates/'));
-                    $zip->addFile($filePath, $relativePath);
+                // templates フォルダ
+                $files = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator(TEMPLATES_DIR),
+                    RecursiveIteratorIterator::LEAVES_ONLY
+                );
+                foreach ($files as $name => $file) {
+                    if (!$file->isDir()) {
+                        $filePath = $file->getRealPath();
+                        $relativePath = 'templates/' . substr($filePath, strlen(__DIR__ . '/../templates/'));
+                        $zip->addFile($filePath, $relativePath);
+                    }
                 }
+                $zip->close();
+                $success = true;
+                $action_message = "バックアップが作成されました。";
+                log_action('Backup Created', "Backup: $backup_name");
+            } else {
+                $errors[] = 'バックアップの作成に失敗しました。';
             }
-            $zip->close();
-            $success = true;
-            $action_message = "バックアップが作成されました。";
-            log_action('Backup Created', "Backup: $backup_name");
-        } else {
-            $errors[] = 'バックアップの作成に失敗しました。';
         }
     }
-}
-
-// ログ閲覧機能
-$logs = [];
-$log_file = LOGS_DIR . 'access.log';
-if (file_exists($log_file)) {
-    $logs = file($log_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 }
 
 // HTML出力
@@ -379,6 +366,32 @@ if (file_exists($log_file)) {
             button {
                 padding: 10px;
             }
+        }
+        /* リンク一覧スタイル */
+        .link-list {
+            margin-top: 30px;
+        }
+        .link-item {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            animation: fadeInUp 0.3s;
+        }
+        .link-item h3 {
+            margin-bottom: 10px;
+        }
+        .link-item img {
+            max-width: 100%;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .link-actions {
+            display: flex;
+            justify-content: space-between;
+        }
+        .link-actions form {
+            display: inline;
         }
     </style>
     <script>
