@@ -49,7 +49,7 @@ if (!isset($_SESSION['admin'])) {
 
             if ($username === ADMIN_ID && $password === ADMIN_PASSWORD) {
                 $_SESSION['admin'] = true;
-                header('Location: admin/index.php');
+                header('Location: index.php');
                 exit();
             } else {
                 $errors[] = '無効なIDまたはパスワードです。';
@@ -72,7 +72,7 @@ if (!isset($_SESSION['admin'])) {
                 if (empty($newUserId) || empty($newUserPassword)) {
                     $errors[] = 'ユーザーIDとパスワードを入力してください。';
                 } else {
-                    $users = json_decode(file_get_contents('data/users.json'), true);
+                    $users = json_decode(file_get_contents('../data/users.json'), true);
                     // ユーザーIDの重複確認
                     foreach ($users as $user) {
                         if ($user['id'] === $newUserId) {
@@ -87,7 +87,7 @@ if (!isset($_SESSION['admin'])) {
                             'password' => $hashedPassword,
                             'created_at' => date('Y-m-d H:i:s'),
                         ];
-                        file_put_contents('data/users.json', json_encode($users, JSON_PRETTY_PRINT));
+                        file_put_contents('../data/users.json', json_encode($users, JSON_PRETTY_PRINT));
                         $success = 'ユーザーを追加しました。';
                         logAction('admin', 'add_user', $newUserId);
                     }
@@ -97,7 +97,7 @@ if (!isset($_SESSION['admin'])) {
             // ユーザー削除
             if (isset($_POST['delete_user'])) {
                 $deleteUserId = $_POST['delete_user_id'];
-                $users = json_decode(file_get_contents('data/users.json'), true);
+                $users = json_decode(file_get_contents('../data/users.json'), true);
                 $updatedUsers = [];
                 $found = false;
                 foreach ($users as $user) {
@@ -108,7 +108,7 @@ if (!isset($_SESSION['admin'])) {
                     $updatedUsers[] = $user;
                 }
                 if ($found) {
-                    file_put_contents('data/users.json', json_encode($updatedUsers, JSON_PRETTY_PRINT));
+                    file_put_contents('../data/users.json', json_encode($updatedUsers, JSON_PRETTY_PRINT));
                     $success = 'ユーザーを削除しました。';
                     logAction('admin', 'delete_user', $deleteUserId);
                 } else {
@@ -120,7 +120,7 @@ if (!isset($_SESSION['admin'])) {
             if (isset($_POST['edit_user'])) {
                 $editUserId = $_POST['edit_user_id'];
                 $editUserPassword = $_POST['edit_user_password'];
-                $users = json_decode(file_get_contents('data/users.json'), true);
+                $users = json_decode(file_get_contents('../data/users.json'), true);
                 $updated = false;
                 foreach ($users as &$user) {
                     if ($user['id'] === $editUserId) {
@@ -132,7 +132,7 @@ if (!isset($_SESSION['admin'])) {
                     }
                 }
                 if ($updated) {
-                    file_put_contents('data/users.json', json_encode($users, JSON_PRETTY_PRINT));
+                    file_put_contents('../data/users.json', json_encode($users, JSON_PRETTY_PRINT));
                     $success = 'ユーザーを編集しました。';
                     logAction('admin', 'edit_user', $editUserId);
                 } else {
@@ -144,7 +144,7 @@ if (!isset($_SESSION['admin'])) {
             if (isset($_POST['reset_password'])) {
                 $resetUserId = $_POST['reset_user_id'];
                 $newPassword = bin2hex(random_bytes(4)); // ランダムなパスワード生成
-                $users = json_decode(file_get_contents('data/users.json'), true);
+                $users = json_decode(file_get_contents('../data/users.json'), true);
                 $updated = false;
                 foreach ($users as &$user) {
                     if ($user['id'] === $resetUserId) {
@@ -154,7 +154,7 @@ if (!isset($_SESSION['admin'])) {
                     }
                 }
                 if ($updated) {
-                    file_put_contents('data/users.json', json_encode($users, JSON_PRETTY_PRINT));
+                    file_put_contents('../data/users.json', json_encode($users, JSON_PRETTY_PRINT));
                     $success = 'ユーザーのパスワードをリセットしました。';
                     logAction('admin', 'reset_password', $resetUserId);
                     // リセットされたパスワードを表示
@@ -168,12 +168,12 @@ if (!isset($_SESSION['admin'])) {
             if (isset($_POST['delete_link'])) {
                 $deleteLinkId = $_POST['delete_link_id'];
                 $userId = $_POST['delete_link_user_id'];
-                $seisei = json_decode(file_get_contents('data/seisei.json'), true);
+                $seisei = json_decode(file_get_contents('../data/seisei.json'), true);
                 if (isset($seisei[$userId][$deleteLinkId])) {
                     unset($seisei[$userId][$deleteLinkId]);
-                    file_put_contents('data/seisei.json', json_encode($seisei, JSON_PRETTY_PRINT));
+                    file_put_contents('../data/seisei.json', json_encode($seisei, JSON_PRETTY_PRINT));
                     // フォルダの削除
-                    $dirPath = $deleteLinkId;
+                    $dirPath = '../' . $deleteLinkId;
                     if (is_dir($dirPath)) {
                         // フォルダ内のファイルを削除
                         $files = glob($dirPath . '/*');
@@ -197,7 +197,7 @@ if (!isset($_SESSION['admin'])) {
 // ログ記録関数
 function logAction($user, $action, $detail = '')
 {
-    $logs = json_decode(file_get_contents('data/logs.json'), true);
+    $logs = json_decode(file_get_contents('../data/logs.json'), true);
     $logs[] = [
         'user' => $user,
         'action' => $action,
@@ -205,20 +205,19 @@ function logAction($user, $action, $detail = '')
         'timestamp' => date('Y-m-d H:i:s'),
         'ip' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown',
     ];
-    file_put_contents('data/logs.json', json_encode($logs, JSON_PRETTY_PRINT));
+    file_put_contents('../data/logs.json', json_encode($logs, JSON_PRETTY_PRINT));
 }
 
 // ユーザー情報の取得
-$users = json_decode(file_get_contents('data/users.json'), true);
+$users = json_decode(file_get_contents('../data/users.json'), true);
 
 // リンク情報の取得
-$seisei = json_decode(file_get_contents('data/seisei.json'), true);
+$seisei = json_decode(file_get_contents('../data/seisei.json'), true);
 
 // ログ情報の取得
-$logs = json_decode(file_get_contents('data/logs.json'), true);
+$logs = json_decode(file_get_contents('../data/logs.json'), true);
 
 // 初回ログイン時のパスワード変更処理は管理者によるリセットパスワード機能で対応
-
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -387,12 +386,12 @@ $logs = json_decode(file_get_contents('data/logs.json'), true);
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
             <form method="POST">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['admin_token'], ENT_QUOTES, 'UTF-8'); ?>">
                 <label>ユーザーID</label>
                 <input type="text" name="username" required>
                 <label>パスワード</label>
@@ -403,42 +402,149 @@ $logs = json_decode(file_get_contents('data/logs.json'), true);
             <h1>管理者画面</h1>
             <?php if (!empty($success)): ?>
                 <div class="success">
-                    <p><?php echo $success; ?></p>
+                    <p><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?></p>
                 </div>
             <?php endif; ?>
             <?php if (!empty($errors)): ?>
                 <div class="error">
                     <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
+                        <p><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
 
             <nav>
-                <a href="admin/index.php?action=dashboard">ダッシュボード</a>
-                <a href="admin/index.php?action=manage_users">ユーザー管理</a>
-                <a href="admin/index.php?action=logs">アクセスログ</a>
-                <a href="admin/index.php?action=logout">ログアウト</a>
+                <a href="index.php?action=dashboard">ダッシュボード</a>
+                <a href="index.php?action=manage_users">ユーザー管理</a>
+                <a href="index.php?action=logs">アクセスログ</a>
+                <a href="index.php?action=logout">ログアウト</a>
             </nav>
 
             <?php
             switch ($action) {
                 case 'manage_users':
-                    include 'manage_users.php';
+                    // ユーザー管理セクション
+                    ?>
+                    <div class="section">
+                        <h2>ユーザー管理</h2>
+                        <h3>新規ユーザーの追加</h3>
+                        <form method="POST">
+                            <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['admin_token'], ENT_QUOTES, 'UTF-8'); ?>">
+                            <label>ユーザーID</label>
+                            <input type="text" name="new_user_id" required>
+                            <label>パスワード</label>
+                            <input type="password" name="new_user_password" required>
+                            <button type="submit" name="add_user">ユーザーを追加</button>
+                        </form>
+
+                        <h3>既存ユーザーの一覧</h3>
+                        <table>
+                            <tr>
+                                <th>ユーザーID</th>
+                                <th>作成日時</th>
+                                <th>操作</th>
+                            </tr>
+                            <?php foreach ($users as $user): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars($user['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td>
+                                        <form method="POST" style="display:inline-block;">
+                                            <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['admin_token'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="hidden" name="delete_user_id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            <button type="submit" name="delete_user">削除</button>
+                                        </form>
+                                        <button onclick="openEditModal('<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>')">編集</button>
+                                        <form method="POST" style="display:inline-block;">
+                                            <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['admin_token'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="hidden" name="reset_user_id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            <button type="submit" name="reset_password">パスワードリセット</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+
+                        <!-- ユーザー編集モーダル -->
+                        <div id="editModal" class="modal">
+                            <div class="modal-content">
+                                <span class="close" id="editClose">&times;</span>
+                                <h2>ユーザー編集</h2>
+                                <form method="POST">
+                                    <input type="hidden" name="token" value="<?php echo htmlspecialchars($_SESSION['admin_token'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" id="edit_user_id" name="edit_user_id">
+                                    <label>新しいパスワード（変更しない場合は空白）</label>
+                                    <input type="password" name="edit_user_password">
+                                    <button type="submit" name="edit_user">変更を保存</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <script>
+                            // ユーザー編集モーダルの処理
+                            const editModal = document.getElementById('editModal');
+                            const editClose = document.getElementById('editClose');
+                            const editUserIdInput = document.getElementById('edit_user_id');
+
+                            function openEditModal(userId) {
+                                editUserIdInput.value = userId;
+                                editModal.style.display = 'block';
+                            }
+
+                            editClose.addEventListener('click', function() {
+                                editModal.style.display = 'none';
+                            });
+                            window.addEventListener('click', function(event) {
+                                if (event.target == editModal) {
+                                    editModal.style.display = 'none';
+                                }
+                            });
+                        </script>
+                    </div>
+                    <?php
                     break;
                 case 'logs':
-                    include 'view_logs.php';
+                    // アクセスログセクション
+                    ?>
+                    <div class="section">
+                        <h2>アクセスログ</h2>
+                        <table>
+                            <tr>
+                                <th>ユーザー</th>
+                                <th>アクション</th>
+                                <th>詳細</th>
+                                <th>タイムスタンプ</th>
+                                <th>IPアドレス</th>
+                            </tr>
+                            <?php foreach (array_reverse($logs) as $log): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($log['user'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars($log['action'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars($log['detail'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars($log['timestamp'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars($log['ip'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+                    <?php
                     break;
                 case 'dashboard':
                 default:
-                    include 'dashboard.php';
+                    // ダッシュボードセクション
+                    ?>
+                    <div class="section">
+                        <h2>ダッシュボード</h2>
+                        <p>サムネイル付きリンク生成サービスの管理者画面へようこそ。</p>
+                    </div>
+                    <?php
                     break;
             }
 
             // ログアウト処理
             if ($action === 'logout') {
                 session_destroy();
-                header('Location: admin/index.php');
+                header('Location: index.php');
                 exit();
             }
             ?>
@@ -447,124 +553,3 @@ $logs = json_decode(file_get_contents('data/logs.json'), true);
     </div>
 </body>
 </html>
-
-<?php
-// ダッシュボードの内容
-if ($action === 'dashboard') {
-    ?>
-    <div class="section">
-        <h2>ダッシュボード</h2>
-        <p>サムネイル付きリンク生成サービスの管理者画面へようこそ。</p>
-    </div>
-    <?php
-}
-
-// ユーザー管理の内容
-if ($action === 'manage_users') {
-    ?>
-    <div class="section">
-        <h2>ユーザー管理</h2>
-        <h3>新規ユーザーの追加</h3>
-        <form method="POST">
-            <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
-            <label>ユーザーID</label>
-            <input type="text" name="new_user_id" required>
-            <label>パスワード</label>
-            <input type="password" name="new_user_password" required>
-            <button type="submit" name="add_user">ユーザーを追加</button>
-        </form>
-
-        <h3>既存ユーザーの一覧</h3>
-        <table>
-            <tr>
-                <th>ユーザーID</th>
-                <th>作成日時</th>
-                <th>操作</th>
-            </tr>
-            <?php foreach ($users as $user): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($user['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td>
-                        <form method="POST" style="display:inline-block;">
-                            <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
-                            <input type="hidden" name="delete_user_id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-                            <button type="submit" name="delete_user">削除</button>
-                        </form>
-                        <button onclick="openEditModal('<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>')">編集</button>
-                        <form method="POST" style="display:inline-block;">
-                            <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
-                            <input type="hidden" name="reset_user_id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-                            <button type="submit" name="reset_password">パスワードリセット</button>
-                        </form>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-        </table>
-
-        <!-- ユーザー編集モーダル -->
-        <div id="editModal" class="modal">
-            <div class="modal-content">
-                <span class="close" id="editClose">&times;</span>
-                <h2>ユーザー編集</h2>
-                <form method="POST">
-                    <input type="hidden" name="token" value="<?php echo $_SESSION['admin_token']; ?>">
-                    <input type="hidden" id="edit_user_id" name="edit_user_id">
-                    <label>新しいパスワード（変更しない場合は空白）</label>
-                    <input type="password" name="edit_user_password">
-                    <button type="submit" name="edit_user">変更を保存</button>
-                </form>
-            </div>
-        </div>
-
-        <script>
-            // ユーザー編集モーダルの処理
-            const editModal = document.getElementById('editModal');
-            const editClose = document.getElementById('editClose');
-            const editUserIdInput = document.getElementById('edit_user_id');
-
-            function openEditModal(userId) {
-                editUserIdInput.value = userId;
-                editModal.style.display = 'block';
-            }
-
-            editClose.addEventListener('click', function() {
-                editModal.style.display = 'none';
-            });
-            window.addEventListener('click', function(event) {
-                if (event.target == editModal) {
-                    editModal.style.display = 'none';
-                }
-            });
-        </script>
-    </div>
-    <?php
-}
-
-// アクセスログの内容
-if ($action === 'logs') {
-    ?>
-    <div class="section">
-        <h2>アクセスログ</h2>
-        <table>
-            <tr>
-                <th>ユーザー</th>
-                <th>アクション</th>
-                <th>詳細</th>
-                <th>タイムスタンプ</th>
-                <th>IPアドレス</th>
-            </tr>
-            <?php foreach (array_reverse($logs) as $log): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($log['user'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($log['action'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($log['detail'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($log['timestamp'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($log['ip'], ENT_QUOTES, 'UTF-8'); ?></td>
-                </tr>
-            <?php endforeach; ?>
-        </table>
-    </div>
-    <?php
-}
-?>
