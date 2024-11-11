@@ -265,15 +265,6 @@ function generate_redirect_page($linkA, $title, $description, $twitterSite, $ima
     return $html;
 }
 
-// 画像保存関数
-function saveImage($imageData)
-{
-    $imageName = uniqid() . '.png';
-    $imagePath = 'uploads/' . $imageName;
-    file_put_contents(__DIR__ . '/' . $imagePath, $imageData);
-    return $imagePath;
-}
-
 // ユーザーのリンク一覧取得
 function get_user_links($user_id) {
     $links = get_links();
@@ -316,67 +307,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $errors[] = 'サムネイル画像の選択方法を選んでください。';
             }
 
-            // リンク情報の取得
-            $links = get_links();
-            $found = false;
-            foreach ($links as &$link) {
-                if ($link['id'] === $link_id && $link['user_id'] === $_SESSION['user']['id']) {
-                    $found = true;
+            // サムネイル画像の処理
+            if (empty($errors)) {
+                $imagePath = '';
 
-                    // サムネイル画像の処理
-                    $imagePath = $link['imagePath']; // 既存の画像パス
+                if ($imageOption === 'template') {
+                    // テンプレート画像を使用
+                    $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
+                    if (!in_array($selectedTemplate, $templateImages)) {
+                        $errors[] = '有効なテンプレート画像を選択してください。';
+                    } else {
+                        $imagePath = 'templates/' . $selectedTemplate;
+                    }
+                }
 
-                    if ($imageOption === 'template') {
-                        // テンプレート画像を使用
-                        $templateImages = ['live_now.png', 'nude.png', 'gigafile.jpg', 'ComingSoon.png'];
-                        if (!in_array($selectedTemplate, $templateImages)) {
-                            $errors[] = '有効なテンプレート画像を選択してください。';
-                        } else {
-                            $imagePath = 'templates/' . $selectedTemplate;
+                // 画像編集テンプレートの適用またはクライアント側で処理された画像の保存
+                if (!empty($editedImageData)) {
+                    $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
+                    $imagePath = saveImage($imageData);
+                }
+
+                if (empty($imagePath)) {
+                    $errors[] = '画像の処理に失敗しました。';
+                }
+
+                // リンク情報の更新
+                if (empty($errors)) {
+                    $links = get_links();
+                    $found = false;
+                    foreach ($links as &$link) {
+                        if ($link['id'] === $link_id && $link['user_id'] === $_SESSION['user']['id']) {
+                            $found = true;
+                            $link['linkA'] = $linkA;
+                            $link['title'] = $title;
+                            $link['description'] = $description;
+                            $link['twitterSite'] = $twitterSite;
+                            $link['imageAlt'] = $imageAlt;
+                            $link['imagePath'] = $imagePath;
+                            $link['updated_at'] = date('Y-m-d H:i:s');
+
+                            // 既存のリダイレクトページを更新
+                            $linkDir = __DIR__ . '/' . $link_id;
+                            $indexFile = $linkDir . '/index.php';
+                            $htmlContent = generate_redirect_page($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath);
+                            file_put_contents($indexFile, $htmlContent);
+
+                            $success = true;
+                            $action_message = "リンクを更新しました。";
+                            log_action('Link Edited', "ID: $link_id, User: " . $_SESSION['user']['id']);
+                            break;
                         }
                     }
+                    unset($link);
 
-                    // 画像編集テンプレートの適用またはクライアント側で処理された画像の保存
-                    if (!empty($editedImageData)) {
-                        $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $editedImageData));
-                        $imagePath = saveImage($imageData);
+                    if ($found) {
+                        save_links($links);
+                    } else {
+                        $errors[] = 'リンクが見つかりません。';
                     }
-
-                    if (empty($imagePath)) {
-                        $errors[] = '画像の処理に失敗しました。';
-                    }
-
-                    // リンク情報の更新
-                    if (empty($errors)) {
-                        $link['linkA'] = $linkA;
-                        $link['title'] = $title;
-                        $link['description'] = $description;
-                        $link['twitterSite'] = $twitterSite;
-                        $link['imageAlt'] = $imageAlt;
-                        $link['imagePath'] = $imagePath;
-                        $link['updated_at'] = date('Y-m-d H:i:s');
-
-                        // 既存のリダイレクトページを更新
-                        $linkDir = __DIR__ . '/' . $link_id;
-                        $indexFile = $linkDir . '/index.php';
-                        $htmlContent = generate_redirect_page($linkA, $title, $description, $twitterSite, $imageAlt, $imagePath);
-                        file_put_contents($indexFile, $htmlContent);
-
-                        $success = true;
-                        log_action('Link Edited', "ID: $link_id, User: " . $_SESSION['user']['id']);
-                    }
-
-                    break;
                 }
-            }
-            unset($link);
-
-            if (!$found) {
-                $errors[] = 'リンクが見つかりません。';
-            }
-
-            if ($found && empty($errors)) {
-                save_links($links);
             }
         }
     }
@@ -407,6 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     array_splice($links, $index, 1);
                     save_links($links);
                     $success = true;
+                    $action_message = "リンクを削除しました。";
                     log_action('Link Deleted', "ID: $link_id, User: " . $_SESSION['user']['id']);
                     break;
                 }
@@ -417,23 +407,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
     }
-}
-
-// ログアウトリンク
-$logout_link = '';
-if (is_logged_in()) {
-    $logout_link = '
-    <form method="POST" style="text-align: right;">
-        <input type="hidden" name="action" value="logout">
-        <input type="hidden" name="token" value="' . $_SESSION['token'] . '">
-        <button type="submit" style="background-color: #ff5252;">ログアウト</button>
-    </form>';
-}
-
-// リンク一覧の取得
-$user_links = [];
-if (is_logged_in()) {
-    $user_links = get_user_links($_SESSION['user']['id']);
 }
 
 // HTML出力
@@ -656,7 +629,21 @@ if (is_logged_in()) {
         .image-option-buttons .image-option-button {
             margin: 5px;
         }
-        /* ユーザーリンク一覧 */
+        /* メディアクエリ */
+        @media screen and (max-width: 600px) {
+            .success-message input[type="text"] {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .success-message button {
+                width: 100%;
+                margin-left: 0;
+            }
+            .image-option-button {
+                flex: 1 1 100%;
+            }
+        }
+        /* リンク一覧スタイル */
         .link-list {
             margin-top: 30px;
         }
@@ -681,20 +668,6 @@ if (is_logged_in()) {
         }
         .link-actions form {
             display: inline;
-        }
-        /* メディアクエリ */
-        @media screen and (max-width: 600px) {
-            .success-message input[type="text"] {
-                width: 100%;
-                margin-bottom: 10px;
-            }
-            .success-message button {
-                width: 100%;
-                margin-left: 0;
-            }
-            .image-option-button {
-                flex: 1 1 100%;
-            }
         }
     </style>
     <script>
