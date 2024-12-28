@@ -13,7 +13,8 @@
 instagran.azurewebsites.net/
 ├── .htaccess
 ├── index.php
-├── admin.php
+├── admin
+│   └── admin.php
 ├── account.json
 ├── system.json
 ├── data/
